@@ -6,7 +6,7 @@ Open-source relational database management system (RDBMS) for structured data st
 
 ## What is this?
 
-This is a **connector** -- a configuration that defines how to authenticate with MySQL and what data is available for reading and writing. It does not move data by itself. Instead, it is used by the [Analitiq](https://analitiq-app.com) data integration platform or the open-source `analitiq-core` engine to set up data pipelines.
+This is a **connector** -- a configuration that defines how to authenticate with MySQL and what data is available for reading and writing. It does not move data by itself. Instead, it is used by the [Analitiq](https://analitiq-app.com) data integration platform or the open-source [Analitiq Engine](https://github.com/analitiq-ai/analitiq-engine) to set up data pipelines.
 
 ## How to use this connector
 
@@ -20,12 +20,12 @@ All connectors from this registry are automatically available on [analitiq-app.c
 
 All connectors are open source and free to use. To get started:
 
-1. Clone the [analitiq-core](https://github.com/analitiq-core) repository
+1. Clone the [analitiq-engine](https://github.com/analitiq-ai/analitiq-engine) repository
 2. Install the Claude plugin `analitiq-plugin-dataflow`
-3. Launch Claude in the root directory of `analitiq-core`
+3. Launch Claude in the root directory of `analitiq-engine`
 4. Tell it: *"I need to move data from X to Y"*
 
-The `analitiq-plugin-dataflow` plugin will automatically fetch the required connectors from the [Analitiq Skill Registry](https://github.com/analitiq-dip-registry) and set up the data flow pipeline for you.
+The `analitiq-plugin-dataflow` plugin will automatically fetch the required connectors from the [Analitiq DIP Registry](https://github.com/analitiq-dip-registry) and set up the data flow pipeline for you.
 
 ## Prerequisites
 
@@ -88,4 +88,4 @@ All connectors in this registry are community-maintained and live at [github.com
 
 - [MySQL Documentation](https://dev.mysql.com/doc/refman/8.0/en/)
 - [Analitiq Cloud](https://analitiq-app.com)
-- [Analitiq Core (open source)](https://github.com/analitiq-core)
+- [Analitiq Engine (open source)](https://github.com/analitiq-ai/analitiq-engine)
