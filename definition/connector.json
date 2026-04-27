@@ -3,7 +3,7 @@
   "connector_type": "database",
   "connector_descr": "Open-source relational database management system for structured data storage, querying, and management",
   "slug": "mysql",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "placeholders": [],
   "endpoints": [],
   "driver": "mysql",
@@ -61,11 +61,26 @@
       "required": false,
       "default": "PREFERRED",
       "options": [
-        { "label": "Disabled", "value": "DISABLED" },
-        { "label": "Preferred", "value": "PREFERRED" },
-        { "label": "Required", "value": "REQUIRED" },
-        { "label": "Verify CA", "value": "VERIFY_CA" },
-        { "label": "Verify Identity", "value": "VERIFY_IDENTITY" }
+        {
+          "label": "Disabled",
+          "value": "DISABLED"
+        },
+        {
+          "label": "Preferred",
+          "value": "PREFERRED"
+        },
+        {
+          "label": "Required",
+          "value": "REQUIRED"
+        },
+        {
+          "label": "Verify CA",
+          "value": "VERIFY_CA"
+        },
+        {
+          "label": "Verify Identity",
+          "value": "VERIFY_IDENTITY"
+        }
       ]
     },
     {
