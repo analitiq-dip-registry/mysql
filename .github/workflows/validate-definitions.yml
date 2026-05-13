@@ -1,0 +1,69 @@
+name: Validate Definitions
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  # NOTE: the job id 'validate' is referenced by the branch protection rule written in
+  # tag-unverified.yml (context: 'validate'). Renaming this job breaks enforcement.
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install check-jsonschema
+        run: pip install 'check-jsonschema==0.29.4'
+
+      - name: Validate connector.json
+        run: |
+          set -euo pipefail
+          if [ ! -f definition/connector.json ]; then
+            echo "ERROR: definition/connector.json is missing."
+            exit 1
+          fi
+          check-jsonschema \
+            --schemafile https://schemas.analitiq.ai/connector/latest.json \
+            definition/connector.json
+
+      - name: Validate endpoints
+        run: |
+          set -euo pipefail
+
+          if [ ! -d definition/endpoints ]; then
+            echo "ERROR: definition/endpoints/ directory is missing."
+            exit 1
+          fi
+
+          mapfile -d '' -t ENDPOINTS < <(find definition/endpoints -name "*.json" -type f -print0)
+
+          if [ "${#ENDPOINTS[@]}" -eq 0 ]; then
+            echo "No endpoint files found — skipping."
+            exit 0
+          fi
+
+          CONNECTOR_TYPE=$(jq -r '.connector_type' definition/connector.json)
+          if [ -z "$CONNECTOR_TYPE" ] || [ "$CONNECTOR_TYPE" = "null" ]; then
+            echo "ERROR: .connector_type is missing or null in definition/connector.json"
+            exit 1
+          fi
+
+          case "$CONNECTOR_TYPE" in
+            api)      TYPE_SCHEMA="https://schemas.analitiq.ai/api-endpoint/latest.json" ;;
+            database) TYPE_SCHEMA="https://schemas.analitiq.ai/database-endpoint/latest.json" ;;
+            *)
+              echo "Unknown connector_type: '$CONNECTOR_TYPE'"
+              exit 1
+              ;;
+          esac
+
+          for f in "${ENDPOINTS[@]}"; do
+            echo "--- $f ---"
+            check-jsonschema --schemafile https://schemas.analitiq.ai/endpoint/latest.json "$f"
+            check-jsonschema --schemafile "$TYPE_SCHEMA" "$f"
+          done
