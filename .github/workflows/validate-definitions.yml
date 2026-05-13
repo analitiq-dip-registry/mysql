@@ -36,8 +36,8 @@ jobs:
           set -euo pipefail
 
           if [ ! -d definition/endpoints ]; then
-            echo "ERROR: definition/endpoints/ directory is missing."
-            exit 1
+            echo "No definition/endpoints/ directory — skipping endpoint validation."
+            exit 0
           fi
 
           mapfile -d '' -t ENDPOINTS < <(find definition/endpoints -name "*.json" -type f -print0)

@@ -1,106 +1,154 @@
 {
-  "connector_name": "MySQL",
-  "connector_type": "database",
-  "connector_descr": "Open-source relational database management system for structured data storage, querying, and management",
-  "slug": "mysql",
+  "$schema": "https://schemas.analitiq.ai/connector/latest.json",
+  "kind": "database",
+  "display_name": "MySQL",
+  "description": "Open-source relational database management system for structured data storage, querying, and management",
+  "documentation_url": "https://dev.mysql.com/doc/refman/8.0/en/",
   "version": "0.0.3",
-  "placeholders": [],
-  "endpoints": [],
-  "driver": "mysql",
-  "enable_ssh": true,
-  "api_doc_url": "https://dev.mysql.com/doc/refman/8.0/en/",
-  "auth": {
-    "type": "db",
-    "authorize": {
-      "url": "/db_utils",
-      "method": "POST",
-      "body": "{\"test_connect_only\": true}"
+  "default_transport": "database",
+  "transports": {
+    "database": {
+      "transport_type": "sqlalchemy",
+      "driver": "mysql+aiomysql",
+      "dsn": {
+        "kind": "url_template",
+        "template": "mysql+aiomysql://{username}:{password}@{host}:{port}/{database}",
+        "bindings": {
+          "username": {
+            "value": { "ref": "connection.parameters.username" },
+            "encoding": "url_userinfo"
+          },
+          "password": {
+            "value": { "ref": "secrets.password" },
+            "encoding": "url_userinfo"
+          },
+          "host": {
+            "value": { "ref": "connection.parameters.host" },
+            "encoding": "host"
+          },
+          "port": {
+            "value": { "ref": "connection.parameters.port" },
+            "encoding": "raw"
+          },
+          "database": {
+            "value": { "ref": "connection.parameters.database" },
+            "encoding": "url_path_segment"
+          }
+        }
+      },
+      "tls": {
+        "mode": { "ref": "connection.parameters.ssl_mode" },
+        "ca_certificate": { "ref": "secrets.ssl_ca_certificate" }
+      }
     }
   },
-  "form_fields": [
-    {
-      "name": "host",
-      "label": "Host",
-      "type": "text",
-      "required": true,
-      "default": "127.0.0.1",
-      "placeholder": "e.g. 127.0.0.1 or db.example.com"
+  "auth": {
+    "type": "db"
+  },
+  "connection_contract": {
+    "inputs": {
+      "host": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "connection.parameters",
+        "type": "string",
+        "required": true,
+        "default": "127.0.0.1",
+        "ui": {
+          "label": "Host",
+          "widget": "text",
+          "placeholder": "e.g. 127.0.0.1 or db.example.com"
+        }
+      },
+      "port": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "connection.parameters",
+        "type": "integer",
+        "required": true,
+        "default": 3306,
+        "ui": {
+          "label": "Port",
+          "widget": "text"
+        }
+      },
+      "database": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "connection.parameters",
+        "type": "string",
+        "required": true,
+        "ui": {
+          "label": "Database",
+          "widget": "text",
+          "placeholder": "e.g. my_database"
+        }
+      },
+      "username": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "connection.parameters",
+        "type": "string",
+        "required": true,
+        "ui": {
+          "label": "Username",
+          "widget": "text",
+          "placeholder": "e.g. root"
+        }
+      },
+      "password": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "secrets",
+        "type": "string",
+        "required": true,
+        "secret": true,
+        "ui": {
+          "label": "Password",
+          "widget": "password"
+        }
+      },
+      "ssl_mode": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "connection.parameters",
+        "type": "string",
+        "required": false,
+        "default": "PREFERRED",
+        "enum": ["DISABLED", "PREFERRED", "REQUIRED", "VERIFY_CA", "VERIFY_IDENTITY"],
+        "ui": {
+          "label": "SSL Mode",
+          "widget": "select",
+          "options": [
+            { "label": "Disabled", "value": "DISABLED" },
+            { "label": "Preferred", "value": "PREFERRED" },
+            { "label": "Required", "value": "REQUIRED" },
+            { "label": "Verify CA", "value": "VERIFY_CA" },
+            { "label": "Verify Identity", "value": "VERIFY_IDENTITY" }
+          ]
+        }
+      },
+      "ssl_ca_certificate": {
+        "source": "user",
+        "phase": "pre_auth",
+        "storage": "secrets",
+        "type": "string",
+        "required": false,
+        "secret": true,
+        "ui": {
+          "label": "SSL CA Certificate",
+          "widget": "textarea"
+        }
+      }
     },
-    {
-      "name": "port",
-      "label": "Port",
-      "type": "text",
-      "required": true,
-      "default": "3306"
-    },
-    {
-      "name": "database",
-      "label": "Database",
-      "type": "text",
-      "required": true,
-      "placeholder": "e.g. my_database"
-    },
-    {
-      "name": "username",
-      "label": "Username",
-      "type": "text",
-      "required": true,
-      "placeholder": "e.g. root"
-    },
-    {
-      "name": "password",
-      "label": "Password",
-      "type": "password",
-      "required": true,
-      "secret": true
-    },
-    {
-      "name": "ssl_mode",
-      "label": "SSL Mode",
-      "type": "select",
-      "required": false,
-      "default": "PREFERRED",
-      "options": [
+    "validation": {
+      "rules": [
         {
-          "label": "Disabled",
-          "value": "DISABLED"
-        },
-        {
-          "label": "Preferred",
-          "value": "PREFERRED"
-        },
-        {
-          "label": "Required",
-          "value": "REQUIRED"
-        },
-        {
-          "label": "Verify CA",
-          "value": "VERIFY_CA"
-        },
-        {
-          "label": "Verify Identity",
-          "value": "VERIFY_IDENTITY"
+          "when": { "field": "ssl_mode", "operator": "in", "value": ["VERIFY_CA", "VERIFY_IDENTITY"] },
+          "require": ["ssl_ca_certificate"],
+          "message": "ssl_ca_certificate is required when ssl_mode is VERIFY_CA or VERIFY_IDENTITY"
         }
       ]
-    },
-    {
-      "name": "ssl_ca",
-      "label": "SSL CA Certificate",
-      "type": "textarea",
-      "required": false
-    },
-    {
-      "name": "ssl_cert",
-      "label": "SSL Client Certificate",
-      "type": "textarea",
-      "required": false
-    },
-    {
-      "name": "ssl_key",
-      "label": "SSL Client Key",
-      "type": "textarea",
-      "required": false,
-      "secret": true
     }
-  ]
+  }
 }
