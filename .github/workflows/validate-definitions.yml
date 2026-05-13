@@ -20,6 +20,22 @@ jobs:
       - name: Install check-jsonschema
         run: pip install 'check-jsonschema==0.29.4'
 
+      - name: Fetch schemas
+        run: |
+          set -euo pipefail
+          mkdir -p .schemas
+          curl -sSfL https://schemas.analitiq.ai/connector/latest.json      -o .schemas/connector.json
+          curl -sSfL https://schemas.analitiq.ai/api-endpoint/latest.json   -o .schemas/api-endpoint.json
+          curl -sSfL https://schemas.analitiq.ai/database-endpoint/latest.json -o .schemas/database-endpoint.json
+          for f in .schemas/*.json; do
+            ACTUAL_ID=$(jq -r '."$id"' "$f")
+            EXPECTED_ID="https://schemas.analitiq.ai/$(basename "$f" .json)/latest.json"
+            if [ "$ACTUAL_ID" != "$EXPECTED_ID" ]; then
+              echo "ERROR: $f returned schema with \$id=$ACTUAL_ID (expected $EXPECTED_ID)"
+              exit 1
+            fi
+          done
+
       - name: Validate connector.json
         run: |
           set -euo pipefail
@@ -28,7 +44,7 @@ jobs:
             exit 1
           fi
           check-jsonschema \
-            --schemafile https://schemas.analitiq.ai/connector/latest.json \
+            --schemafile .schemas/connector.json \
             definition/connector.json
 
       - name: Validate endpoints
@@ -47,23 +63,22 @@ jobs:
             exit 0
           fi
 
-          CONNECTOR_TYPE=$(jq -r '.connector_type' definition/connector.json)
-          if [ -z "$CONNECTOR_TYPE" ] || [ "$CONNECTOR_TYPE" = "null" ]; then
-            echo "ERROR: .connector_type is missing or null in definition/connector.json"
+          CONNECTOR_KIND=$(jq -r '.kind' definition/connector.json)
+          if [ -z "$CONNECTOR_KIND" ] || [ "$CONNECTOR_KIND" = "null" ]; then
+            echo "ERROR: .kind is missing or null in definition/connector.json"
             exit 1
           fi
 
-          case "$CONNECTOR_TYPE" in
-            api)      TYPE_SCHEMA="https://schemas.analitiq.ai/api-endpoint/latest.json" ;;
-            database) TYPE_SCHEMA="https://schemas.analitiq.ai/database-endpoint/latest.json" ;;
+          case "$CONNECTOR_KIND" in
+            api)      TYPE_SCHEMA=".schemas/api-endpoint.json" ;;
+            database) TYPE_SCHEMA=".schemas/database-endpoint.json" ;;
             *)
-              echo "Unknown connector_type: '$CONNECTOR_TYPE'"
+              echo "Unknown connector kind: '$CONNECTOR_KIND'"
               exit 1
               ;;
           esac
 
           for f in "${ENDPOINTS[@]}"; do
             echo "--- $f ---"
-            check-jsonschema --schemafile https://schemas.analitiq.ai/endpoint/latest.json "$f"
             check-jsonschema --schemafile "$TYPE_SCHEMA" "$f"
           done
