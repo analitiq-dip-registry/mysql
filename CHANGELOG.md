@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.4] - 2026-05-15
+
+### Fixed
+- bug: match Analitiq webhook API Gateway schema exactly (#9)
+
 ## [0.0.3] - 2026-04-27
 
 ### Fixed
