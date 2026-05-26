@@ -139,25 +139,26 @@
         "ui": {
           "label": "SSL Mode",
           "widget": "select",
+          "help_text": "MySQL-native TLS mode. Values are case-sensitive and correspond directly to MySQL client `--ssl-mode` semantics.",
           "options": [
             {
-              "label": "Disabled",
+              "label": "DISABLED — no TLS (plaintext only)",
               "value": "DISABLED"
             },
             {
-              "label": "Preferred",
+              "label": "PREFERRED — try TLS, fall back to plaintext (default)",
               "value": "PREFERRED"
             },
             {
-              "label": "Required",
+              "label": "REQUIRED — require TLS, no fallback",
               "value": "REQUIRED"
             },
             {
-              "label": "Verify CA",
+              "label": "VERIFY_CA — require TLS and verify server CA",
               "value": "VERIFY_CA"
             },
             {
-              "label": "Verify Identity",
+              "label": "VERIFY_IDENTITY — require TLS, verify server CA, and verify hostname matches certificate",
               "value": "VERIFY_IDENTITY"
             }
           ]
@@ -172,7 +173,8 @@
         "secret": true,
         "ui": {
           "label": "SSL CA Certificate",
-          "widget": "textarea"
+          "widget": "textarea",
+          "help_text": "PEM-encoded CA certificate used to verify the MySQL server's TLS certificate. Required when ssl_mode is VERIFY_CA or VERIFY_IDENTITY; ignored otherwise."
         }
       }
     },
