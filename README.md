@@ -1,4 +1,6 @@
 ![Status: Verified](https://img.shields.io/badge/status-verified-brightgreen)
+[![Latest release](https://img.shields.io/github/v/release/analitiq-dip-registry/mysql)](https://github.com/analitiq-dip-registry/mysql/releases)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 # MySQL
 
