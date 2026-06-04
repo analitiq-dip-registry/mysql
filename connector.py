@@ -44,6 +44,12 @@ class MySQLDialect(SqlDialect):
         }
         return stmt.on_duplicate_key_update(**update_cols)
 
+    def batch_commits_key_type(self, type_mapper) -> str:
+        # TEXT (the write map's Utf8) cannot be a primary key on
+        # MySQL/MariaDB without a prefix length; the engine's idempotency
+        # keys are bounded identifiers, so a bounded VARCHAR is correct.
+        return "VARCHAR(255)"
+
     def build_tls_connect_arg(self, mode: str, ca_pem: str | None) -> Any:
         """MySQL-native SSL modes for aiomysql.
 
