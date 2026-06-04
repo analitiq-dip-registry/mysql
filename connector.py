@@ -10,11 +10,14 @@ Registered under connector_id ``mysql`` via the package entry points.
 
 from __future__ import annotations
 
+import ssl as _ssl
+
 from typing import Any, Dict, List
 
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from cdk.sql.dialects import SqlDialect
+from cdk.transport_factory import ca_ssl_context
 from cdk.sql.generic import GenericSQLConnector
 
 
@@ -40,6 +43,45 @@ class MySQLDialect(SqlDialect):
             if c.name not in conflict_keys and c.name in record_columns
         }
         return stmt.on_duplicate_key_update(**update_cols)
+
+    def build_tls_connect_arg(self, mode: str, ca_pem: str | None) -> Any:
+        """MySQL-native SSL modes for aiomysql.
+
+        aiomysql accepts ``False`` (no TLS) or an SSLContext — never the
+        native mode strings. Vocabulary: ``DISABLED`` / ``PREFERRED`` /
+        ``REQUIRED`` / ``VERIFY_CA`` / ``VERIFY_IDENTITY``
+        (case-insensitive on the stored value).
+        """
+        canonical = mode.upper()
+        if canonical == "DISABLED":
+            return False
+        if canonical in ("PREFERRED", "REQUIRED"):
+            # Negotiate TLS without verifying the server certificate (the
+            # connection didn't ship a CA bundle). ``check_hostname`` must
+            # be False whenever ``verify_mode`` is CERT_NONE or CPython
+            # raises.
+            ctx = _ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = _ssl.CERT_NONE
+            return ctx
+        if canonical == "VERIFY_CA":
+            if not ca_pem:
+                raise ValueError(
+                    "tls.mode='VERIFY_CA' requires tls.ca_certificate to "
+                    "resolve to a PEM certificate bundle"
+                )
+            return ca_ssl_context(ca_pem, check_hostname=False)
+        if canonical == "VERIFY_IDENTITY":
+            if not ca_pem:
+                raise ValueError(
+                    "tls.mode='VERIFY_IDENTITY' requires tls.ca_certificate "
+                    "to resolve to a PEM certificate bundle"
+                )
+            return ca_ssl_context(ca_pem, check_hostname=True)
+        raise ValueError(
+            f"{self.name} tls.mode {mode!r} not recognized; expected one of: "
+            "DISABLED, PREFERRED, REQUIRED, VERIFY_CA, VERIFY_IDENTITY"
+        )
 
 
 class MySQLConnector(GenericSQLConnector):
