@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "analitiq-connector-mysql"
+version = "0.1.0"
+description = "Analitiq connector for MySQL: dialect, driver, definition."
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools]
+packages = ["analitiq_connector_mysql"]
+package-dir = { "analitiq_connector_mysql" = "." }
+
+[project.entry-points."analitiq.source_connectors"]
+mysql = "analitiq_connector_mysql.connector:MySQLConnector"
+
+[project.entry-points."analitiq.destination_connectors"]
+mysql = "analitiq_connector_mysql.connector:MySQLConnector"
