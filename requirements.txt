@@ -1,0 +1,6 @@
+# THIS connector's driver only (the engine pins no database drivers).
+aiomysql>=0.2.0
+# aiomysql's adapter still passes the deprecated positional argument to
+# PyMySQL Connection.ping(); PyMySQL 1.2 removed it. Pin below 1.2 until
+# aiomysql ships a fix.
+pymysql<1.2

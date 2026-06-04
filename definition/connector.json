@@ -1,6 +1,7 @@
 {
   "$schema": "https://schemas.analitiq.ai/connector/latest.json",
   "kind": "database",
+  "connector_id": "mysql",
   "display_name": "MySQL",
   "description": "Open-source relational database management system for structured data storage, querying, and management",
   "documentation_url": "https://dev.mysql.com/doc/refman/8.0/en/",
