@@ -51,8 +51,10 @@ class MySQLDialect(SqlDialect):
         return "VARCHAR(255)"
 
     def current_timestamp_default(self) -> str:
-        # MySQL requires the fsp in DEFAULT to match the column's fsp; DATETIME(6)
-        # DEFAULT CURRENT_TIMESTAMP (no precision) is rejected with error 1067.
+        # The write type-map always emits DATETIME(6) for Timestamp columns.
+        # MySQL rejects `DATETIME(6) DEFAULT CURRENT_TIMESTAMP` (error 1067)
+        # because a non-zero fsp column requires the DEFAULT expression to
+        # carry a matching fsp. Return the precision-qualified form instead.
         return "CURRENT_TIMESTAMP(6)"
 
     def build_tls_connect_arg(self, mode: str, ca_pem: str | None) -> Any:
