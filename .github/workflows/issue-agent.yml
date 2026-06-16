@@ -3,6 +3,8 @@ name: Notify Issue Agent
 on:
   issues:
     types: [opened]
+  issue_comment:
+    types: [created]
 
 # No GitHub API access is needed: the request is authenticated with the
 # ISSUE_AGENT_API_KEY org secret (x-api-key header) against the endpoint in the
@@ -12,10 +14,21 @@ permissions: {}
 
 jobs:
   notify-issue-agent:
-    # This repo is public and anyone can open an issue. Only dispatch issues opened
-    # by Analitiq-Bot — gating on the author at the job level means any other issue
-    # skips the job entirely, so the API key is never used and nothing is sent.
-    if: github.event.issue.user.login == 'Analitiq-Bot'
+    # This repo is public, so anyone can open issues or comment. Dispatch only when
+    # the trigger is from Analitiq-Bot, gated at the job level so any other actor
+    # skips the job entirely and the API key is never used:
+    #   - an issue opened by Analitiq-Bot, OR
+    #   - an Analitiq-Bot comment containing "/dispatch" on an issue (not a PR).
+    # The "/dispatch" marker is required on comments so the issue-agent's own bot
+    # comments don't re-trigger a dispatch loop. The login fields are set by GitHub
+    # and are not user-forgeable.
+    if: >-
+      (github.event_name == 'issues'
+        && github.event.issue.user.login == 'Analitiq-Bot')
+      || (github.event_name == 'issue_comment'
+        && github.event.comment.user.login == 'Analitiq-Bot'
+        && github.event.issue.pull_request == null
+        && contains(github.event.comment.body, '/dispatch'))
     runs-on: ubuntu-latest
 
     steps:
