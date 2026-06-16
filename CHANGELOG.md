@@ -1,10 +1,5 @@
 # Changelog
 
-## [0.1.1] - 2026-06-16
-
-### Fixed
-- fix: override `current_timestamp_default()` to return `CURRENT_TIMESTAMP(6)` so `DATETIME(6)` columns have a valid default (MySQL error 1067) (#14)
-
 ## [0.1.0] - 2026-06-04
 
 ### Added
