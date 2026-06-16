@@ -44,6 +44,12 @@ class MySQLDialect(SqlDialect):
         }
         return stmt.on_duplicate_key_update(**update_cols)
 
+    def current_timestamp_default(self) -> str:
+        # DATETIME(6) DEFAULT CURRENT_TIMESTAMP is rejected by MySQL (error 1067).
+        # The fractional-seconds precision in the DEFAULT expression must match
+        # the column's fsp: DATETIME(6) requires CURRENT_TIMESTAMP(6).
+        return "CURRENT_TIMESTAMP(6)"
+
     def batch_commits_key_type(self, type_mapper) -> str:
         # TEXT (the write map's Utf8) cannot be a primary key on
         # MySQL/MariaDB without a prefix length; the engine's idempotency
