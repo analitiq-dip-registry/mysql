@@ -50,6 +50,11 @@ class MySQLDialect(SqlDialect):
         # keys are bounded identifiers, so a bounded VARCHAR is correct.
         return "VARCHAR(255)"
 
+    def current_timestamp_default(self) -> str:
+        # MySQL requires the fsp in DEFAULT to match the column's fsp; DATETIME(6)
+        # DEFAULT CURRENT_TIMESTAMP (no precision) is rejected with error 1067.
+        return "CURRENT_TIMESTAMP(6)"
+
     def build_tls_connect_arg(self, mode: str, ca_pem: str | None) -> Any:
         """MySQL-native SSL modes for aiomysql.
 

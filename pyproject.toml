@@ -21,3 +21,6 @@ mysql = "analitiq_connector_mysql.connector:MySQLConnector"
 
 [project.entry-points."analitiq.destination_connectors"]
 mysql = "analitiq_connector_mysql.connector:MySQLConnector"
+
+[tool.pytest.ini_options]
+pythonpath = [".", "tests/stubs"]
