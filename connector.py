@@ -45,9 +45,11 @@ class MySQLDialect(SqlDialect):
         return stmt.on_duplicate_key_update(**update_cols)
 
     def current_timestamp_default(self) -> str:
-        # DATETIME(6) DEFAULT CURRENT_TIMESTAMP is rejected by MySQL (error 1067).
-        # The fractional-seconds precision in the DEFAULT expression must match
-        # the column's fsp: DATETIME(6) requires CURRENT_TIMESTAMP(6).
+        # MySQL requires the fractional-seconds precision (fsp) in a DEFAULT
+        # expression to match the column's fsp exactly; a mismatch is rejected
+        # with error 1067 "Invalid default value". The CDK write-map targets
+        # DATETIME(6) for all Timestamp canonical types (definition/type-map-write.json),
+        # so the default must be CURRENT_TIMESTAMP(6).
         return "CURRENT_TIMESTAMP(6)"
 
     def batch_commits_key_type(self, type_mapper) -> str:
