@@ -4,8 +4,10 @@ on:
   issues:
     types: [opened]
 
-# No GitHub API access is needed: the request is authenticated with
-# ISSUE_AGENT_API_KEY and the payload is read from the event context.
+# No GitHub API access is needed: the request is authenticated with the
+# ISSUE_AGENT_API_KEY org secret (x-api-key header) against the endpoint in the
+# ANALITIQ_WEBHOOK_NEW_ISSUE org variable, and the payload is read from the event
+# context. No checkout, no GITHUB_TOKEN calls — so grant the token no scopes.
 permissions: {}
 
 jobs:
@@ -31,10 +33,16 @@ jobs:
             echo "::error::Org secret ISSUE_AGENT_API_KEY is not set."
             exit 1
           fi
+          if ! printf '%s' "$ISSUE_NUMBER" | grep -Eq '^[0-9]+$'; then
+            echo "::error::Issue number '$ISSUE_NUMBER' is not a positive integer."
+            exit 1
+          fi
 
-          # Build the payload with jq so issue_number stays a JSON integer and the
-          # strings are escaped correctly. Exactly three keys: the API gateway model
-          # is additionalProperties:false, so any extra field is rejected with a 400.
+          # Build the payload with jq so the strings are escaped correctly and
+          # issue_number serializes as a JSON integer: --argjson (NOT --arg) keeps it
+          # unquoted, because the gateway requires an integer and rejects "42" with a
+          # 400. Exactly three keys — the gateway model is additionalProperties:false,
+          # so any extra field is likewise rejected with a 400.
           PAYLOAD=$(jq -n \
             --arg repo "$REPO" \
             --argjson issue_number "$ISSUE_NUMBER" \
@@ -46,33 +54,55 @@ jobs:
           MAX_ATTEMPTS=3
           attempt=1
           while :; do
+            set +e
             HTTP_CODE=$(curl --silent --show-error \
+              --connect-timeout 10 --max-time 30 \
               -o response_body.txt \
               -D response_headers.txt \
               -w '%{http_code}' \
               -X POST "$API_URL" \
               -H "x-api-key: $API_KEY" \
               -H "Content-Type: application/json" \
-              -d "$PAYLOAD" || true)
+              -d "$PAYLOAD")
+            CURL_RC=$?
+            set -e
 
             BODY=$(cat response_body.txt 2>/dev/null || true)
+
+            # Transport-level failure (DNS, connection refused, TLS, timeout): curl
+            # exits non-zero and reports status 000. This is the class most worth
+            # retrying, so back off briefly and try again before giving up.
+            if [ "$CURL_RC" -ne 0 ] || [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ]; then
+              if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+                echo "::error::Transport error contacting issue-agent (curl rc=$CURL_RC, http=${HTTP_CODE:-none}); retries exhausted after $attempt attempts."
+                exit 1
+              fi
+              echo "::warning::Transport error (curl rc=$CURL_RC). Retrying in 5s (attempt $attempt/$MAX_ATTEMPTS)."
+              sleep 5
+              attempt=$((attempt + 1))
+              continue
+            fi
 
             case "$HTTP_CODE" in
               202)
                 echo "✅ 202 — job submitted."
-                echo "$BODY"
                 exit 0
                 ;;
               200)
                 echo "✅ 200 — a job for this repo+issue is already active (dedup, no-op)."
-                echo "$BODY"
                 exit 0
                 ;;
               429)
+                # Honor Retry-After (delta-seconds). Default to 120 when the header is
+                # absent or non-numeric (the spec also permits an HTTP-date form, which
+                # we don't parse); clamp so an outsized value can't stall the runner.
                 RETRY_AFTER=$(grep -i '^retry-after:' response_headers.txt | tail -n1 | awk '{print $2}' | tr -d '\r')
-                RETRY_AFTER=${RETRY_AFTER:-120}
+                case "$RETRY_AFTER" in
+                  ''|*[!0-9]*) RETRY_AFTER=120 ;;
+                esac
+                if [ "$RETRY_AFTER" -gt 300 ]; then RETRY_AFTER=300; fi
                 if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
-                  echo "::error::429 — concurrency cap of 10 reached; retries exhausted after $attempt attempts."
+                  echo "::error::429 — concurrency cap reached; retries exhausted after $attempt attempts. The issue was not dispatched; re-run this workflow to retry."
                   echo "$BODY"
                   exit 1
                 fi
@@ -91,7 +121,7 @@ jobs:
                 exit 1
                 ;;
               *)
-                echo "::error::Issue-agent dispatch failed with HTTP ${HTTP_CODE:-000}."
+                echo "::error::Issue-agent dispatch failed with HTTP ${HTTP_CODE}."
                 echo "$BODY"
                 exit 1
                 ;;
