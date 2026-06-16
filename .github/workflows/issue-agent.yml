@@ -3,6 +3,8 @@ name: Notify Issue Agent
 on:
   issues:
     types: [opened]
+  issue_comment:
+    types: [created]
 
 # No GitHub API access is needed: the request is authenticated with the
 # ISSUE_AGENT_API_KEY org secret (x-api-key header) against the endpoint in the
@@ -12,6 +14,22 @@ permissions: {}
 
 jobs:
   notify-issue-agent:
+    # This repo is public, so anyone can open issues or comment. Dispatch only when
+    # the trigger is from Analitiq-Bot, gated at the job level so any other actor
+    # skips the job entirely and the API key is never used:
+    #   - an issue opened by Analitiq-Bot, OR
+    #   - an Analitiq-Bot comment starting with "/dispatch" on an issue (not a PR).
+    # The leading "/dispatch" marker is required on comments so the issue-agent's own
+    # bot comments don't re-trigger a dispatch loop; anchoring with startsWith (vs a
+    # substring match) also stops a bot comment that merely quotes "/dispatch" in prose
+    # from firing. The login fields are set by GitHub and are not user-forgeable.
+    if: >-
+      (github.event_name == 'issues'
+        && github.event.issue.user.login == 'Analitiq-Bot')
+      || (github.event_name == 'issue_comment'
+        && github.event.comment.user.login == 'Analitiq-Bot'
+        && github.event.issue.pull_request == null
+        && startsWith(github.event.comment.body, '/dispatch'))
     runs-on: ubuntu-latest
 
     steps:
