@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.1] - 2026-06-16
+
+### Fixed
+- fix: override current_timestamp_default() to CURRENT_TIMESTAMP(6) for DATETIME(6) defaults (MySQL 1067) (#22)
+
 ## [0.1.0] - 2026-06-04
 
 ### Added
