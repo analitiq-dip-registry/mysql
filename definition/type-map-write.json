@@ -106,17 +106,17 @@
   },
   {
     "match": "regex",
-    "canonical": "^Time(32|64)\\([A-Z]+\\)$",
+    "canonical": "^Time(32|64)\\([a-z]+\\)$",
     "native": "TIME(6)"
   },
   {
     "match": "regex",
-    "canonical": "^Timestamp\\([A-Z]+\\)$",
+    "canonical": "^Timestamp\\([a-z]+\\)$",
     "native": "DATETIME(6)"
   },
   {
     "match": "regex",
-    "canonical": "^Timestamp\\([A-Z]+,\\s*.+\\)$",
+    "canonical": "^Timestamp\\([a-z]+,\\s*.+\\)$",
     "native": "DATETIME(6)"
   }
 ]
