@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.2] - 2026-06-16
+
+### Fixed
+- fix: set connector_id to repo name 'mysql' for registry sync (#23)
+
 ## [0.1.1] - 2026-06-16
 
 ### Fixed
