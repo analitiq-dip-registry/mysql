@@ -12,6 +12,10 @@ permissions: {}
 
 jobs:
   notify-issue-agent:
+    # This repo is public and anyone can open an issue. Only dispatch issues opened
+    # by Analitiq-Bot — gating on the author at the job level means any other issue
+    # skips the job entirely, so the API key is never used and nothing is sent.
+    if: github.event.issue.user.login == 'Analitiq-Bot'
     runs-on: ubuntu-latest
 
     steps:
