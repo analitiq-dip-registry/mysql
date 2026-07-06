@@ -1,11 +1,11 @@
 {
   "$schema": "https://schemas.analitiq.ai/connector/latest.json",
   "kind": "database",
-  "connector_id": "2235d034-577f-40b7-b532-aaf1b10121ac",
+  "connector_id": "mysql",
   "display_name": "MySQL",
   "description": "Open-source relational database management system for structured data storage, querying, and management",
   "documentation_url": "https://dev.mysql.com/doc/refman/8.0/en/",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "default_transport": "database",
   "transports": {
     "database": {
