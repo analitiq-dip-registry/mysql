@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.0] - 2026-07-23
+
+### Added
+- fix(#31): map MySQL TIME to Duration across the fsp ladder (#32)
+
 ## [0.2.0] - 2026-07-23
 
 ### Added
