@@ -29,7 +29,9 @@ deferred to the regular INSERT path).
 from __future__ import annotations
 
 import io
+import json
 import logging
+import math
 import os
 import tempfile
 from datetime import date, datetime
@@ -37,6 +39,7 @@ from typing import Any
 
 import ssl as _ssl
 
+import pymysql.err as _pymysql_err
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
@@ -51,26 +54,45 @@ logger = logging.getLogger(__name__)
 _ER_LOCAL_INFILE_DISABLED: frozenset[int] = frozenset({1148, 3948})
 
 
+class _BinaryColumnError(Exception):
+    """Raised when a batch contains bytes values unsupported by the TSV path."""
+
+
 def _tsv_value(v: Any) -> str:
     """Serialise one record value to a MySQL LOAD DATA INFILE TSV cell.
 
     Returns ``\\N`` for None, ``1``/``0`` for bool, ISO strings for
-    datetime/date, and backslash-escaped text for everything else.
-    Raises ``TypeError`` for ``bytes`` — binary data cannot be safely
-    encoded as TSV text and must use the INSERT path instead.
+    datetime/date, JSON for dict/list, and backslash-escaped text for
+    strings.  Raises ``_BinaryColumnError`` for ``bytes`` (binary data
+    cannot be safely encoded as TSV and must use the INSERT path instead).
+    Raises ``_BinaryColumnError`` for non-finite floats (NaN/±Inf are not
+    valid MySQL numeric literals and must use the INSERT path).
     """
     if v is None:
         return r"\N"
     if isinstance(v, bool):
         return "1" if v else "0"
-    if isinstance(v, (int, float)):
+    if isinstance(v, float):
+        if math.isnan(v) or math.isinf(v):
+            raise _BinaryColumnError(
+                f"non-finite float ({v!r}) cannot be serialized to TSV; "
+                "deferring batch to INSERT path"
+            )
+        return str(v)
+    if isinstance(v, int):
         return str(v)
     if isinstance(v, bytes):
-        raise TypeError("bytes value cannot be serialized to TSV for LOAD DATA LOCAL INFILE")
+        raise _BinaryColumnError(
+            "bytes value cannot be serialized to TSV for LOAD DATA LOCAL INFILE"
+        )
     if isinstance(v, datetime):
         return v.isoformat()
     if isinstance(v, date):
         return v.isoformat()
+    if isinstance(v, (dict, list)):
+        # JSON columns arrive as Python dicts/lists; dump to valid JSON text.
+        s = json.dumps(v, default=str)
+        return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
     s = str(v)
     return (
         s.replace("\\", "\\\\")
@@ -192,9 +214,8 @@ class MySQLConnector(GenericSQLConnector):
 
         Attempts ``LOAD DATA LOCAL INFILE`` for bulk throughput.  Falls
         back to the base-class batched-INSERT on ER 1148/3948 (server or
-        client has ``local_infile`` disabled) or if the batch contains
-        ``bytes`` values (binary columns require per-column UNHEX and are
-        not supported by the TSV path).
+        client has ``local_infile`` disabled) or when any value cannot be
+        serialized to TSV (bytes / NaN / Inf).
         """
         if state.table is None:
             return
@@ -204,13 +225,25 @@ class MySQLConnector(GenericSQLConnector):
             try:
                 self._load_data_local_infile(conn, state.address, records)
                 return
-            except TypeError:
-                # Binary column in batch — defer to INSERT (no retry flag
-                # flip: may succeed on other batches without binary data).
-                pass
-            except OperationalError as exc:
-                orig = getattr(exc, "orig", None)
-                mysql_errno = orig.args[0] if orig and orig.args else None
+            except _BinaryColumnError as exc:
+                # Non-serializable value in batch — defer to INSERT.
+                # No flag flip: other batches without this value will still
+                # use the fast path.
+                logger.debug(
+                    "LOAD DATA LOCAL INFILE skipped for batch: %s; "
+                    "falling back to batched-INSERT",
+                    exc,
+                )
+            except (OperationalError, _pymysql_err.OperationalError) as exc:
+                # The raw aiomysql cursor raises pymysql.err.OperationalError
+                # directly (bypassing SQLAlchemy's exception-wrapping layer);
+                # the SQLAlchemy subclass covers any future path that does go
+                # through the SA boundary.
+                if isinstance(exc, OperationalError):
+                    orig = getattr(exc, "orig", None)
+                    mysql_errno = orig.args[0] if orig and orig.args else None
+                else:
+                    mysql_errno = exc.args[0] if exc.args else None
                 if mysql_errno in _ER_LOCAL_INFILE_DISABLED:
                     logger.info(
                         "LOAD DATA LOCAL INFILE disabled (MySQL ER %s); "
@@ -235,9 +268,10 @@ class MySQLConnector(GenericSQLConnector):
         so aiomysql can handle the LOCAL file-transfer protocol.  The temp
         file is deleted whether or not the statement succeeds.
 
-        Raises ``TypeError`` if any value is ``bytes`` (binary columns
-        must use the INSERT path).  Raises ``sqlalchemy.exc.OperationalError``
-        on MySQL errors, including ER 1148/3948 for disabled ``local_infile``.
+        Raises ``_BinaryColumnError`` if any value cannot be encoded as
+        TSV (bytes, NaN, Inf).  Raises ``pymysql.err.OperationalError``
+        on MySQL errors, including ER 1148/3948 for disabled
+        ``local_infile``.
         """
         if not records:
             return
@@ -246,7 +280,7 @@ class MySQLConnector(GenericSQLConnector):
         quoted_table = self.dialect.quote_table(address)
         quoted_cols = ", ".join(self.dialect.quote_ident(c) for c in columns)
 
-        # Serialise to TSV (raises TypeError on bytes values).
+        # Serialise to TSV; raises _BinaryColumnError on unsupported values.
         buf = io.StringIO()
         for record in records:
             buf.write("\t".join(_tsv_value(record[c]) for c in columns))
@@ -277,6 +311,9 @@ class MySQLConnector(GenericSQLConnector):
             # async aiomysql call with asyncio.run_coroutine_threadsafe so
             # this execute() call is synchronous from our perspective.
             raw_cursor = conn.connection.dbapi_connection.cursor()
-            raw_cursor.execute(sql)
+            try:
+                raw_cursor.execute(sql)
+            finally:
+                raw_cursor.close()
         finally:
             os.unlink(tmp_path)
