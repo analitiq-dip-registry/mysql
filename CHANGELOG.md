@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.0] - 2026-07-23
+
+### Added
+- feat: align connector with rc13 contracts (#25)
+
 ## [0.1.3] - 2026-06-29
 
 ### Fixed
