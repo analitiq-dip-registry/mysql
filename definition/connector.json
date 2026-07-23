@@ -3,8 +3,15 @@
   "kind": "database",
   "connector_id": "mysql",
   "display_name": "MySQL",
-  "description": "Open-source relational database management system for structured data storage, querying, and management",
+  "description": "MySQL open-source relational database. Connects over the MySQL wire protocol via the async SQLAlchemy mysql+aiomysql dialect for structured data storage, querying, runtime table discovery, and DDL/write-back.",
   "documentation_url": "https://dev.mysql.com/doc/refman/8.0/en/",
+  "tags": [
+    "database",
+    "mysql",
+    "sql",
+    "sqlalchemy",
+    "relational"
+  ],
   "version": "0.1.3",
   "default_transport": "database",
   "transports": {
@@ -72,7 +79,8 @@
         "ui": {
           "label": "Host",
           "widget": "text",
-          "placeholder": "e.g. 127.0.0.1 or db.example.com"
+          "placeholder": "e.g. 127.0.0.1 or db.example.com",
+          "help_text": "Use an IP or DNS name. 'localhost' makes the MySQL client resolve to a Unix socket; use 127.0.0.1 for TCP/IP."
         }
       },
       "port": {
@@ -101,7 +109,7 @@
       },
       "username": {
         "source": "user",
-        "phase": "pre_auth",
+        "phase": "auth",
         "storage": "connection.parameters",
         "type": "string",
         "required": true,
@@ -113,7 +121,7 @@
       },
       "password": {
         "source": "user",
-        "phase": "pre_auth",
+        "phase": "auth",
         "storage": "secrets",
         "type": "string",
         "required": true,
@@ -140,7 +148,7 @@
         "ui": {
           "label": "SSL Mode",
           "widget": "select",
-          "help_text": "MySQL-native TLS mode. Values are case-sensitive and correspond directly to MySQL client `--ssl-mode` semantics.",
+          "help_text": "MySQL-native TLS mode. Values are case-sensitive and correspond directly to MySQL client --ssl-mode semantics.",
           "options": [
             {
               "label": "DISABLED — no TLS (plaintext only)",
@@ -184,8 +192,7 @@
         {
           "when": {
             "field": "ssl_mode",
-            "operator": "in",
-            "value": [
+            "in": [
               "VERIFY_CA",
               "VERIFY_IDENTITY"
             ]
@@ -196,6 +203,21 @@
           "message": "ssl_ca_certificate is required when ssl_mode is VERIFY_CA or VERIFY_IDENTITY"
         }
       ]
+    }
+  },
+  "resource_discovery": {
+    "strategy": "information_schema",
+    "transport_ref": "database",
+    "implementation": {
+      "type": "builtin"
+    },
+    "produces": [
+      "connection.endpoints",
+      "connection.type_map"
+    ],
+    "triggers": {
+      "list_resources": "on_activation",
+      "describe_resource": "on_resource_selected"
     }
   }
 }
