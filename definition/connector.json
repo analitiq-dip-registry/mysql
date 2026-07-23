@@ -148,7 +148,7 @@
         "ui": {
           "label": "SSL Mode",
           "widget": "select",
-          "help_text": "MySQL-native TLS mode vocabulary (--ssl-mode). Note: the driver negotiates TLS only when the server advertises support — a server without TLS connects unencrypted regardless of mode.",
+          "help_text": "MySQL-native TLS mode vocabulary (--ssl-mode). REQUIRED, VERIFY_CA, and VERIFY_IDENTITY are enforced post-connect: every new connection is verified to be encrypted and fails if it is not. DISABLED and PREFERRED do not promise encryption.",
           "options": [
             {
               "label": "DISABLED — no TLS (plaintext only)",
@@ -159,15 +159,15 @@
               "value": "PREFERRED"
             },
             {
-              "label": "REQUIRED — TLS without certificate verification",
+              "label": "REQUIRED — require TLS (verified post-connect), no certificate verification",
               "value": "REQUIRED"
             },
             {
-              "label": "VERIFY_CA — TLS, verify server CA",
+              "label": "VERIFY_CA — require TLS, verify server CA",
               "value": "VERIFY_CA"
             },
             {
-              "label": "VERIFY_IDENTITY — TLS, verify server CA and hostname",
+              "label": "VERIFY_IDENTITY — require TLS, verify server CA and hostname",
               "value": "VERIFY_IDENTITY"
             }
           ]

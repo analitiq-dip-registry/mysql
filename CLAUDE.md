@@ -25,7 +25,7 @@ None required.
 
 - Prefer `127.0.0.1` over `localhost` to avoid DNS/IPv6 resolution ambiguity (the aiomysql driver always connects over TCP/IP; Unix-socket special-casing of `localhost` applies to other MySQL clients).
 - SSL mode defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL.
-- `ssl_mode` values follow the MySQL client `--ssl-mode` vocabulary: `DISABLED` (no TLS), `PREFERRED` (try TLS, fall back), `REQUIRED` (TLS without certificate verification), `VERIFY_CA` (TLS + verify CA), `VERIFY_IDENTITY` (TLS + verify CA + verify hostname). The driver negotiates TLS only when the server advertises support, so no mode hard-guarantees TLS against a non-TLS server.
+- `ssl_mode` values follow the MySQL client `--ssl-mode` vocabulary: `DISABLED` (no TLS), `PREFERRED` (try TLS, fall back), `REQUIRED` (TLS without certificate verification), `VERIFY_CA` (TLS + verify CA), `VERIFY_IDENTITY` (TLS + verify CA + verify hostname). The driver negotiates TLS only when the server advertises support; the connector therefore verifies post-connect (`Ssl_cipher` probe) that `REQUIRED`/`VERIFY_*` sessions are encrypted and fails the connection otherwise.
 - The default character set is `utf8mb4`.
 - Port must be an integer.
 - SSL CA certificate (`ssl_ca_certificate`) is required when `ssl_mode` is set to `VERIFY_CA` or `VERIFY_IDENTITY`.

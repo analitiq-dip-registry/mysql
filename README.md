@@ -58,7 +58,7 @@ MySQL uses standard database credentials (username and password) to authenticate
 ## Limitations
 
 - **localhost vs 127.0.0.1** -- Prefer `127.0.0.1` over `localhost` to avoid DNS/IPv6 resolution ambiguity. (The connector's aiomysql driver always connects over TCP/IP; the Unix-socket special-casing of `localhost` applies to other MySQL clients, not this connector.)
-- **SSL mode** -- Defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL. Note: the driver negotiates TLS only when the server advertises support, so `REQUIRED` and the `VERIFY_*` modes also connect unencrypted to a server without TLS -- they add certificate/hostname verification when TLS is negotiated, not a hard TLS guarantee. Values are MySQL-native: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`.
+- **SSL mode** -- Defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL. `REQUIRED` and the `VERIFY_*` modes are enforced post-connect: every new connection is verified to be encrypted (`Ssl_cipher` probe) and fails loudly if it is not, so a plaintext downgrade (non-TLS server or capability-stripping MITM) cannot pass silently. Values are MySQL-native: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`.
 - **Character set** -- The default character set is `utf8mb4`.
 - **TIME maps to Duration, not time-of-day** -- MySQL `TIME` is a signed duration (`-838:59:59` to `+838:59:59`), not a clock time. Columns are read as `Duration` canonicals (unit follows the declared fsp: bare/`TIME(0)` = seconds, fsp 1-3 = milliseconds, fsp 4-6 = microseconds) so negative and >24 h values are represented losslessly.
 - **No rate limits** -- This is a direct database connection; no API rate limits apply. However, heavy queries may impact database performance.
@@ -71,11 +71,11 @@ MySQL uses standard database credentials (username and password) to authenticate
 |-------------------|---------------------------------------------------------------------------------|
 | `DISABLED`        | No TLS (plaintext only).                                                        |
 | `PREFERRED`       | Try TLS, fall back to plaintext if the server does not support it. *(default)*  |
-| `REQUIRED`        | TLS without certificate verification (see note below).                          |
-| `VERIFY_CA`       | TLS; verify the server's certificate against the supplied CA.                   |
-| `VERIFY_IDENTITY` | TLS; verify the CA and that the server hostname matches the cert.               |
+| `REQUIRED`        | Require TLS (verified post-connect); no certificate verification.               |
+| `VERIFY_CA`       | Require TLS; verify the server's certificate against the supplied CA.           |
+| `VERIFY_IDENTITY` | Require TLS; verify the CA and that the server hostname matches the cert.       |
 
-These follow the MySQL client `--ssl-mode` vocabulary. Note: the aiomysql driver performs the TLS handshake only when the server advertises SSL support and otherwise proceeds unencrypted, so no mode can hard-guarantee TLS against a non-TLS server. `ssl_ca_certificate` is required when `ssl_mode` is `VERIFY_CA` or `VERIFY_IDENTITY`.
+These follow the MySQL client `--ssl-mode` vocabulary. The aiomysql driver performs the TLS handshake only when the server advertises SSL support; for `REQUIRED` and the `VERIFY_*` modes the connector therefore verifies post-connect (`SHOW STATUS LIKE 'Ssl_cipher'`) that every new connection is actually encrypted and fails it otherwise. Enforcement requires an engine build with the `verify_tls_state` hook. `ssl_ca_certificate` is required when `ssl_mode` is `VERIFY_CA` or `VERIFY_IDENTITY`.
 
 ## For AI agents
 
