@@ -1,4 +1,5 @@
-"""Unit tests for MySQLDialect.verify_tls_state (post-connect TLS probe).
+"""Unit tests for MySQLDialect: verify_tls_state (post-connect TLS probe)
+and session_init_sql (session time_zone pinning).
 
 The hook receives a raw DBAPI connection (for async drivers, SQLAlchemy's
 asyncio adapter exposing the same cursor surface) and must raise
