@@ -54,19 +54,19 @@ logger = logging.getLogger(__name__)
 _ER_LOCAL_INFILE_DISABLED: frozenset[int] = frozenset({1148, 3948})
 
 
-class _BinaryColumnError(Exception):
-    """Raised when a batch contains bytes values unsupported by the TSV path."""
+class _TsvUnserializableError(Exception):
+    """Raised when a batch value cannot be encoded for LOAD DATA LOCAL INFILE."""
 
 
 def _tsv_value(v: Any) -> str:
     """Serialise one record value to a MySQL LOAD DATA INFILE TSV cell.
 
-    Returns ``\\N`` for None, ``1``/``0`` for bool, ISO strings for
-    datetime/date, JSON for dict/list, and backslash-escaped text for
-    strings.  Raises ``_BinaryColumnError`` for ``bytes`` (binary data
-    cannot be safely encoded as TSV and must use the INSERT path instead).
-    Raises ``_BinaryColumnError`` for non-finite floats (NaN/±Inf are not
-    valid MySQL numeric literals and must use the INSERT path).
+    Returns ``\\N`` for None, ``1``/``0`` for bool, MySQL-formatted strings
+    for datetime/date, JSON for dict/list, and backslash-escaped text for
+    strings.  Raises ``_TsvUnserializableError`` for ``bytes`` (binary data
+    cannot be safely encoded as TSV and must use the INSERT path instead),
+    and for non-finite floats (NaN/±Inf are not valid MySQL numeric
+    literals and must use the INSERT path).
     """
     if v is None:
         return r"\N"
@@ -74,7 +74,7 @@ def _tsv_value(v: Any) -> str:
         return "1" if v else "0"
     if isinstance(v, float):
         if math.isnan(v) or math.isinf(v):
-            raise _BinaryColumnError(
+            raise _TsvUnserializableError(
                 f"non-finite float ({v!r}) cannot be serialized to TSV; "
                 "deferring batch to INSERT path"
             )
@@ -82,11 +82,13 @@ def _tsv_value(v: Any) -> str:
     if isinstance(v, int):
         return str(v)
     if isinstance(v, bytes):
-        raise _BinaryColumnError(
+        raise _TsvUnserializableError(
             "bytes value cannot be serialized to TSV for LOAD DATA LOCAL INFILE"
         )
     if isinstance(v, datetime):
-        return v.isoformat()
+        # Use space separator and drop any timezone offset to produce a format
+        # MySQL accepts for DATETIME/TIMESTAMP columns, matching the INSERT path.
+        return v.strftime("%Y-%m-%d %H:%M:%S.%f")
     if isinstance(v, date):
         return v.isoformat()
     if isinstance(v, (dict, list)):
@@ -225,7 +227,7 @@ class MySQLConnector(GenericSQLConnector):
             try:
                 self._load_data_local_infile(conn, state.address, records)
                 return
-            except _BinaryColumnError as exc:
+            except _TsvUnserializableError as exc:
                 # Non-serializable value in batch — defer to INSERT.
                 # No flag flip: other batches without this value will still
                 # use the fast path.
@@ -268,7 +270,7 @@ class MySQLConnector(GenericSQLConnector):
         so aiomysql can handle the LOCAL file-transfer protocol.  The temp
         file is deleted whether or not the statement succeeds.
 
-        Raises ``_BinaryColumnError`` if any value cannot be encoded as
+        Raises ``_TsvUnserializableError`` if any value cannot be encoded as
         TSV (bytes, NaN, Inf).  Raises ``pymysql.err.OperationalError``
         on MySQL errors, including ER 1148/3948 for disabled
         ``local_infile``.
@@ -280,7 +282,7 @@ class MySQLConnector(GenericSQLConnector):
         quoted_table = self.dialect.quote_table(address)
         quoted_cols = ", ".join(self.dialect.quote_ident(c) for c in columns)
 
-        # Serialise to TSV; raises _BinaryColumnError on unsupported values.
+        # Serialise to TSV; raises _TsvUnserializableError on unsupported values.
         buf = io.StringIO()
         for record in records:
             buf.write("\t".join(_tsv_value(record[c]) for c in columns))
