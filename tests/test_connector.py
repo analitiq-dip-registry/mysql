@@ -107,3 +107,12 @@ class TestVerifyTlsState:
         with pytest.raises(RuntimeError):
             self.dialect.verify_tls_state(conn, "REQUIRED")
         cursor.close.assert_called_once()
+
+
+class TestSessionInitSql:
+    def test_pins_session_time_zone_to_utc(self):
+        assert MySQLDialect().session_init_sql() == ["SET time_zone = '+00:00'"]
+
+    def test_is_deterministic(self):
+        dialect = MySQLDialect()
+        assert dialect.session_init_sql() == dialect.session_init_sql()

@@ -83,6 +83,17 @@ class MySQLDialect(SqlDialect):
         # identifiers, so a bounded VARCHAR is correct.
         return "VARCHAR(255)"
 
+    # ---- session -----------------------------------------------------------
+    def session_init_sql(self) -> list[str]:
+        # MySQL stores TIMESTAMP values as UTC but converts them through the
+        # session time_zone on retrieval, so the read map's tz-aware
+        # Timestamp(<unit>, UTC) canonicals carry correct instants only when
+        # the session runs in UTC. The CDK executes these statements on every
+        # new connection (after verify_tls_state, before use), which pins the
+        # conversion regardless of the server's global time_zone. DATETIME is
+        # zoneless on the wire and unaffected.
+        return ["SET time_zone = '+00:00'"]
+
     # ---- TLS ---------------------------------------------------------------
     def build_tls_connect_arg(self, mode: str, ca_pem: str | None) -> Any:
         """Interpret the connector's MySQL-native ``ssl_mode`` vocabulary.

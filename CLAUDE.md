@@ -31,3 +31,4 @@ None required.
 - SSL CA certificate (`ssl_ca_certificate`) is required when `ssl_mode` is set to `VERIFY_CA` or `VERIFY_IDENTITY`.
 - No API rate limits apply -- this is a direct database connection.
 - MySQL `TIME` columns are read as `Duration` canonicals (unit follows the declared fsp), not time-of-day types. MySQL `TIME` is a signed duration (`-838:59:59` to `+838:59:59`); a time-of-day mapping would corrupt negative or >24 h values.
+- MySQL stores `TIMESTAMP` values as UTC but returns them converted through the session `time_zone`. The connector pins every new connection to UTC (`SET time_zone = '+00:00'` via the CDK's `session_init_sql` hook), so retrieved instants are correct regardless of the server's global setting. `DATETIME` is zoneless and unaffected.
