@@ -57,24 +57,24 @@ MySQL uses standard database credentials (username and password) to authenticate
 
 ## Limitations
 
-- **localhost vs 127.0.0.1** -- Using `localhost` as the host connects via Unix socket by default. Use `127.0.0.1` for TCP/IP connections.
-- **SSL mode** -- Defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL. Set to `REQUIRED` or higher for enforced encryption. Values are MySQL-native and **case-sensitive**: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`.
+- **localhost vs 127.0.0.1** -- Prefer `127.0.0.1` over `localhost` to avoid DNS/IPv6 resolution ambiguity. (The connector's aiomysql driver always connects over TCP/IP; the Unix-socket special-casing of `localhost` applies to other MySQL clients, not this connector.)
+- **SSL mode** -- Defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL. Note: the driver negotiates TLS only when the server advertises support, so `REQUIRED` and the `VERIFY_*` modes also connect unencrypted to a server without TLS -- they add certificate/hostname verification when TLS is negotiated, not a hard TLS guarantee. Values are MySQL-native: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`.
 - **Character set** -- The default character set is `utf8mb4`.
 - **No rate limits** -- This is a direct database connection; no API rate limits apply. However, heavy queries may impact database performance.
 
 ## SSL mode
 
-`ssl_mode` uses MySQL-native, case-sensitive values declared in `definition/connector.json`:
+`ssl_mode` uses MySQL-native values declared in `definition/connector.json`:
 
 | Value             | Meaning                                                                         |
 |-------------------|---------------------------------------------------------------------------------|
 | `DISABLED`        | No TLS (plaintext only).                                                        |
 | `PREFERRED`       | Try TLS, fall back to plaintext if the server does not support it. *(default)*  |
-| `REQUIRED`        | Require TLS; fail if the server does not support it.                            |
-| `VERIFY_CA`       | Require TLS and verify the server's certificate against the supplied CA.        |
-| `VERIFY_IDENTITY` | Require TLS, verify the CA, and verify the server hostname matches the cert.    |
+| `REQUIRED`        | TLS without certificate verification (see note below).                          |
+| `VERIFY_CA`       | TLS; verify the server's certificate against the supplied CA.                   |
+| `VERIFY_IDENTITY` | TLS; verify the CA and that the server hostname matches the cert.               |
 
-These map directly to MySQL client `--ssl-mode` semantics. `ssl_ca_certificate` is required when `ssl_mode` is `VERIFY_CA` or `VERIFY_IDENTITY`.
+These follow the MySQL client `--ssl-mode` vocabulary. Note: the aiomysql driver performs the TLS handshake only when the server advertises SSL support and otherwise proceeds unencrypted, so no mode can hard-guarantee TLS against a non-TLS server. `ssl_ca_certificate` is required when `ssl_mode` is `VERIFY_CA` or `VERIFY_IDENTITY`.
 
 ## For AI agents
 

@@ -43,6 +43,9 @@ class MySQLDialect(SqlDialect):
         records: List[Dict[str, Any]],
         conflict_keys: List[str],
     ) -> Any:
+        # The CDK guarantees ``records`` is non-empty and key-homogeneous:
+        # batches are aligned to the full destination Arrow schema before
+        # conversion, and the sole call site returns early on an empty list.
         stmt = mysql_insert(table).values(records)
         record_columns = set(records[0].keys())
         update_cols = {
@@ -50,6 +53,17 @@ class MySQLDialect(SqlDialect):
             for c in stmt.inserted
             if c.name not in conflict_keys and c.name in record_columns
         }
+        if not update_cols:
+            # Every record column is a conflict key (e.g. a junction table).
+            # SQLAlchemy rejects an empty update dict, so degrade to the
+            # documented no-op assignment on one key column — duplicates are
+            # left untouched, mirroring the CDK's ADBC merge path, which
+            # falls back to insert-if-not-exists when no update columns
+            # remain.
+            key = conflict_keys[0]
+            return stmt.on_duplicate_key_update(
+                **{key: getattr(stmt.inserted, key)}
+            )
         return stmt.on_duplicate_key_update(**update_cols)
 
     # ---- structural overrides (the portable form is invalid on MySQL) ------
@@ -81,10 +95,15 @@ class MySQLDialect(SqlDialect):
         if canonical == "DISABLED":
             return False
         if canonical in ("PREFERRED", "REQUIRED"):
-            # Negotiate TLS without verifying the server certificate (no CA
-            # bundle shipped). ``check_hostname`` must be False whenever
-            # ``verify_mode`` is CERT_NONE or CPython raises. aiomysql cannot
-            # express PREFERRED's plaintext fallback; both modes attempt TLS.
+            # TLS without server-certificate verification (any supplied CA is
+            # ignored in these modes, per --ssl-mode semantics).
+            # ``check_hostname`` must be False whenever ``verify_mode`` is
+            # CERT_NONE or CPython raises. aiomysql performs the TLS
+            # handshake only when the server advertises the SSL capability
+            # and silently proceeds in plaintext otherwise, so an SSLContext
+            # delivers PREFERRED semantics; REQUIRED's no-fallback guarantee
+            # cannot be enforced at this layer (and the CDK does no
+            # post-connect TLS check either).
             ctx = _ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = _ssl.CERT_NONE
@@ -92,19 +111,20 @@ class MySQLDialect(SqlDialect):
         if canonical == "VERIFY_CA":
             if not ca_pem:
                 raise ValueError(
-                    "tls.mode='VERIFY_CA' requires tls.ca_certificate to "
-                    "resolve to a PEM certificate bundle"
+                    "ssl_mode='VERIFY_CA' requires an SSL CA Certificate "
+                    "(ssl_ca_certificate): provide a PEM-encoded CA bundle"
                 )
             return ca_ssl_context(ca_pem, check_hostname=False)
         if canonical == "VERIFY_IDENTITY":
             if not ca_pem:
                 raise ValueError(
-                    "tls.mode='VERIFY_IDENTITY' requires tls.ca_certificate "
-                    "to resolve to a PEM certificate bundle"
+                    "ssl_mode='VERIFY_IDENTITY' requires an SSL CA "
+                    "Certificate (ssl_ca_certificate): provide a PEM-encoded "
+                    "CA bundle"
                 )
             return ca_ssl_context(ca_pem, check_hostname=True)
         raise ValueError(
-            f"{self.name} tls.mode {mode!r} not recognized; expected one of: "
+            f"ssl_mode {mode!r} not recognized; expected one of: "
             "DISABLED, PREFERRED, REQUIRED, VERIFY_CA, VERIFY_IDENTITY"
         )
 

@@ -80,7 +80,7 @@
           "label": "Host",
           "widget": "text",
           "placeholder": "e.g. 127.0.0.1 or db.example.com",
-          "help_text": "Use an IP or DNS name. 'localhost' makes the MySQL client resolve to a Unix socket; use 127.0.0.1 for TCP/IP."
+          "help_text": "Use an IP or DNS name reachable over TCP/IP. Prefer 127.0.0.1 over 'localhost' to avoid DNS/IPv6 resolution ambiguity."
         }
       },
       "port": {
@@ -148,7 +148,7 @@
         "ui": {
           "label": "SSL Mode",
           "widget": "select",
-          "help_text": "MySQL-native TLS mode. Values are case-sensitive and correspond directly to MySQL client --ssl-mode semantics.",
+          "help_text": "MySQL-native TLS mode vocabulary (--ssl-mode). Note: the driver negotiates TLS only when the server advertises support — a server without TLS connects unencrypted regardless of mode.",
           "options": [
             {
               "label": "DISABLED — no TLS (plaintext only)",
@@ -159,15 +159,15 @@
               "value": "PREFERRED"
             },
             {
-              "label": "REQUIRED — require TLS, no fallback",
+              "label": "REQUIRED — TLS without certificate verification",
               "value": "REQUIRED"
             },
             {
-              "label": "VERIFY_CA — require TLS and verify server CA",
+              "label": "VERIFY_CA — TLS, verify server CA",
               "value": "VERIFY_CA"
             },
             {
-              "label": "VERIFY_IDENTITY — require TLS, verify server CA, and verify hostname matches certificate",
+              "label": "VERIFY_IDENTITY — TLS, verify server CA and hostname",
               "value": "VERIFY_IDENTITY"
             }
           ]
