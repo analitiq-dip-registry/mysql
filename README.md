@@ -60,6 +60,7 @@ MySQL uses standard database credentials (username and password) to authenticate
 - **localhost vs 127.0.0.1** -- Prefer `127.0.0.1` over `localhost` to avoid DNS/IPv6 resolution ambiguity. (The connector's aiomysql driver always connects over TCP/IP; the Unix-socket special-casing of `localhost` applies to other MySQL clients, not this connector.)
 - **SSL mode** -- Defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL. Note: the driver negotiates TLS only when the server advertises support, so `REQUIRED` and the `VERIFY_*` modes also connect unencrypted to a server without TLS -- they add certificate/hostname verification when TLS is negotiated, not a hard TLS guarantee. Values are MySQL-native: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`.
 - **Character set** -- The default character set is `utf8mb4`.
+- **TIME maps to Duration, not time-of-day** -- MySQL `TIME` is a signed duration (`-838:59:59` to `+838:59:59`), not a clock time. Columns are read as `Duration` canonicals (unit follows the declared fsp: bare/`TIME(0)` = seconds, fsp 1-3 = milliseconds, fsp 4-6 = microseconds) so negative and >24 h values are represented losslessly.
 - **No rate limits** -- This is a direct database connection; no API rate limits apply. However, heavy queries may impact database performance.
 
 ## SSL mode

@@ -30,3 +30,4 @@ None required.
 - Port must be an integer.
 - SSL CA certificate (`ssl_ca_certificate`) is required when `ssl_mode` is set to `VERIFY_CA` or `VERIFY_IDENTITY`.
 - No API rate limits apply -- this is a direct database connection.
+- MySQL `TIME` columns are read as `Duration` canonicals (unit follows the declared fsp), not time-of-day types. MySQL `TIME` is a signed duration (`-838:59:59` to `+838:59:59`); a time-of-day mapping would corrupt negative or >24 h values.
