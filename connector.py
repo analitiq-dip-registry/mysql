@@ -24,6 +24,7 @@ from typing import Any, Dict, List
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from cdk.sql.dialects import SqlDialect
+from cdk.sql.exceptions import TlsVerificationError
 from cdk.sql.generic import GenericSQLConnector
 from cdk.transport_factory import ca_ssl_context
 
@@ -102,9 +103,10 @@ class MySQLDialect(SqlDialect):
             # CERT_NONE or CPython raises. aiomysql performs the TLS
             # handshake only when the server advertises the SSL capability
             # and silently proceeds in plaintext otherwise, so an SSLContext
-            # delivers PREFERRED semantics; REQUIRED's no-fallback guarantee
-            # cannot be enforced at this layer (and the CDK does no
-            # post-connect TLS check either).
+            # delivers PREFERRED semantics at this layer; REQUIRED's
+            # no-fallback guarantee is enforced post-connect by
+            # ``verify_tls_state`` below, which the CDK invokes on every new
+            # pooled connection.
             ctx = _ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = _ssl.CERT_NONE
@@ -128,6 +130,39 @@ class MySQLDialect(SqlDialect):
             f"ssl_mode {mode!r} not recognized; expected one of: "
             "DISABLED, PREFERRED, REQUIRED, VERIFY_CA, VERIFY_IDENTITY"
         )
+
+    def verify_tls_state(self, dbapi_connection: Any, mode: str) -> None:
+        """Fail closed when a TLS-promising mode landed on a plaintext session.
+
+        aiomysql performs the TLS handshake only when the server advertises
+        the SSL capability and silently proceeds in plaintext otherwise, so
+        connect arguments alone cannot enforce ``REQUIRED`` / ``VERIFY_CA``
+        / ``VERIFY_IDENTITY`` — an active MITM can strip the capability
+        flag and downgrade the strictest mode to plaintext. The CDK calls
+        this hook on every new pooled DBAPI connection whenever the
+        transport declares a TLS mode; an empty ``Ssl_cipher`` status value
+        means the session is not encrypted. ``DISABLED`` and ``PREFERRED``
+        do not promise encryption and pass without probing.
+        """
+        canonical = mode.upper()
+        if canonical not in ("REQUIRED", "VERIFY_CA", "VERIFY_IDENTITY"):
+            return
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("SHOW STATUS LIKE 'Ssl_cipher'")
+            row = cursor.fetchone()
+        finally:
+            cursor.close()
+        cipher = (row[1] if row else None) or ""
+        if not cipher.strip():
+            raise TlsVerificationError(
+                f"ssl_mode={mode!r} requires an encrypted connection, but "
+                "the established session is not encrypted (empty Ssl_cipher "
+                "status). The MySQL server does not have TLS enabled, or an "
+                "active attacker stripped the SSL capability from the "
+                "handshake. Enable TLS on the server, or choose ssl_mode "
+                "DISABLED/PREFERRED if plaintext is acceptable."
+            )
 
 
 class MySQLConnector(GenericSQLConnector):
