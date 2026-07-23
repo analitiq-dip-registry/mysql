@@ -61,6 +61,7 @@ MySQL uses standard database credentials (username and password) to authenticate
 - **SSL mode** -- Defaults to `PREFERRED`, which attempts encrypted connections but falls back to unencrypted if the server does not support SSL. Set to `REQUIRED` or higher for enforced encryption. Values are MySQL-native and **case-sensitive**: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`.
 - **Character set** -- The default character set is `utf8mb4`.
 - **No rate limits** -- This is a direct database connection; no API rate limits apply. However, heavy queries may impact database performance.
+- **TIMESTAMP time zone** -- `TIMESTAMP` columns are stored as UTC internally but returned through the session `time_zone`. Retrieved instants are only guaranteed correct when the session time zone is UTC. The connector declares `SET time_zone = '+00:00'` on every new connection via the `session_init_sql` dialect hook (takes effect once the CDK calls it); until then, ensure the MySQL server's global `time_zone` is set to `'+00:00'`.
 
 ## SSL mode
 

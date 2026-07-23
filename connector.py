@@ -58,6 +58,13 @@ class MySQLDialect(SqlDialect):
         # keys are bounded identifiers, so a bounded VARCHAR is correct.
         return "VARCHAR(255)"
 
+    def session_init_sql(self) -> list[str]:
+        # MySQL stores TIMESTAMP values as UTC internally but converts them
+        # through the session time_zone on retrieval.  Pinning the session to
+        # UTC on every new connection ensures the tz-aware canonical type
+        # Timestamp(<unit>, UTC) matches the on-wire value exactly.
+        return ["SET time_zone = '+00:00'"]
+
     def build_tls_connect_arg(self, mode: str, ca_pem: str | None) -> Any:
         """MySQL-native SSL modes for aiomysql.
 

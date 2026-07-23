@@ -30,3 +30,4 @@ None required.
 - Port must be an integer.
 - SSL CA certificate (`ssl_ca`) is required when `ssl_mode` is set to `VERIFY_CA` or `VERIFY_IDENTITY`.
 - No API rate limits apply -- this is a direct database connection.
+- `TIMESTAMP` columns are stored as UTC internally but returned through the session `time_zone`. Retrieved `TIMESTAMP` instants are only guaranteed correct when the session time zone is UTC. The connector declares `SET time_zone = '+00:00'` via `session_init_sql` for automatic pinning once the CDK calls that hook; until then, ensure the MySQL server's global `time_zone` is `'+00:00'`.
