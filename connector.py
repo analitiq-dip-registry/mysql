@@ -55,15 +55,16 @@ class MySQLDialect(SqlDialect):
         }
         if not update_cols:
             # Every record column is a conflict key (e.g. a junction table).
-            # SQLAlchemy rejects an empty update dict, so degrade to the
-            # documented no-op assignment on one key column — duplicates are
-            # left untouched, mirroring the CDK's ADBC merge path, which
-            # falls back to insert-if-not-exists when no update columns
-            # remain.
+            # SQLAlchemy rejects an empty update dict, so emit MySQL's
+            # documented self-assignment no-op (``col = col``) on one key
+            # column: existing rows keep their stored values no matter which
+            # unique index the conflict landed on. Mirrors the CDK's ADBC
+            # merge path, which degrades to insert-if-not-exists when no
+            # update columns remain. Indexed access, not getattr —
+            # ColumnCollection attribute lookup resolves collection methods
+            # (``keys``, ``values``, ...) before columns.
             key = conflict_keys[0]
-            return stmt.on_duplicate_key_update(
-                **{key: getattr(stmt.inserted, key)}
-            )
+            return stmt.on_duplicate_key_update(**{key: table.columns[key]})
         return stmt.on_duplicate_key_update(**update_cols)
 
     # ---- structural overrides (the portable form is invalid on MySQL) ------
