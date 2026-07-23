@@ -21,6 +21,7 @@
   { "match": "regex", "canonical": "^FixedSizeBinary\\((?<n>25[6-9]|2[6-9]\\d|[3-9]\\d{2}|[1-9]\\d{3}|[1-5]\\d{4}|6[0-4]\\d{3}|65[0-4]\\d{2}|655[0-2]\\d|6553[0-5])\\)$", "native": "VARBINARY(${n})" },
   { "match": "exact", "canonical": "Date32", "native": "DATE" },
   { "match": "exact", "canonical": "Date64", "native": "DATE" },
+  { "match": "regex", "canonical": "^Duration\\([A-Z]+\\)$", "native": "TIME(6)" },
   { "match": "regex", "canonical": "^Time(?:32|64)\\([A-Z]+\\)$", "native": "TIME(6)" },
   { "match": "regex", "canonical": "^Timestamp\\([A-Z]+\\)$", "native": "DATETIME(6)" },
   { "match": "regex", "canonical": "^Timestamp\\([A-Z]+,\\s*.+\\)$", "native": "DATETIME(6)" },
