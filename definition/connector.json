@@ -219,5 +219,16 @@
       "list_resources": "on_activation",
       "describe_resource": "on_resource_selected"
     }
+  },
+  "sql_capabilities": {
+    "catalog": "none",
+    "session_targeting": "per_statement",
+    "merge_form": "insert_on_duplicate_key",
+    "bulk_load": {},
+    "stage": {
+      "scope": "temp",
+      "schema": "target",
+      "transactional_ddl": false
+    }
   }
 }

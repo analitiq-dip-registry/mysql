@@ -1,12 +1,12 @@
 """MySQL connector — dialect + connector class for the Analitiq CDK.
 
 Everything MySQL-specific lives here, in the connector package: backtick
-identifier quoting, the system-schema exclusion list, the ``ON DUPLICATE
-KEY UPDATE`` upsert statement, the MySQL-native TLS-mode interpretation,
-and the structural DDL overrides (``CURRENT_TIMESTAMP(6)`` defaults,
-bounded ``VARCHAR(255)`` batch-commit keys). MySQL runs on the async
-SQLAlchemy transport (``mysql+aiomysql``) — no first-class ADBC driver
-exists for MySQL — so the ADBC hooks stay on the neutral base.
+identifier quoting, the system-schema exclusion list, the stage-then-merge
+write renderings (``CREATE [TEMPORARY] TABLE ... LIKE ...`` staging plus the
+``INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`` merge), the MySQL-native
+TLS-mode interpretation, and the ``CURRENT_TIMESTAMP(6)`` structural DDL
+default. MySQL runs on the async SQLAlchemy transport (``mysql+aiomysql``)
+— no first-class ADBC driver exists for MySQL.
 
 The write-direction type vocabulary is declarative-only: DDL column types
 render through ``definition/type-map-write.json`` via the base
@@ -19,11 +19,10 @@ Registered under connector_id ``mysql`` via the package entry points
 from __future__ import annotations
 
 import ssl as _ssl
-from typing import Any, Dict, List
+from collections.abc import Sequence
+from typing import Any
 
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-
-from cdk.sql.dialects import SqlDialect
+from cdk.sql.dialects import SqlDialect, TableAddress
 from cdk.sql.exceptions import TlsVerificationError
 from cdk.sql.generic import GenericSQLConnector
 from cdk.transport_factory import ca_ssl_context
@@ -35,40 +34,66 @@ class MySQLDialect(SqlDialect):
     name = "mysql"
     quote_char = "`"
     system_schemas = ("information_schema", "mysql", "performance_schema", "sys")
-    supports_upsert_sqlalchemy = True
 
-    # ---- SQLAlchemy write path ---------------------------------------------
-    def build_sqlalchemy_upsert(
+    # ---- stage-then-merge write path (ADR sql-write-path-v2) ---------------
+    def stage_table_sql(
+        self, stage: TableAddress, target: TableAddress, *, temp: bool
+    ) -> str:
+        """``CREATE [TEMPORARY] TABLE`` *stage* shaped like *target*.
+
+        Every SQL write lands in a stage table first. MySQL copies a table's
+        full definition with the unparenthesized ``LIKE`` form (Postgres uses
+        ``(LIKE ... INCLUDING DEFAULTS)``). The connector declares temp-scope
+        staging (``sql_capabilities.stage.scope == "temp"``), so ``temp`` is
+        True: a session-scoped temporary table that carries no schema.
+        """
+        keyword = "CREATE TEMPORARY TABLE" if temp else "CREATE TABLE"
+        return f"{keyword} {self.quote_table(stage)} LIKE {self.quote_table(target)}"
+
+    def merge_statement_sql(
         self,
-        table: Any,
-        records: List[Dict[str, Any]],
-        conflict_keys: List[str],
-    ) -> Any:
-        # The CDK guarantees ``records`` is non-empty and key-homogeneous:
-        # batches are aligned to the full destination Arrow schema before
-        # conversion, and the sole call site returns early on an empty list.
-        stmt = mysql_insert(table).values(records)
-        record_columns = set(records[0].keys())
-        update_cols = {
-            c.name: c
-            for c in stmt.inserted
-            if c.name not in conflict_keys and c.name in record_columns
-        }
-        if not update_cols:
-            # Every record column is a conflict key (e.g. a junction table).
-            # SQLAlchemy rejects an empty update dict, so emit MySQL's
-            # documented self-assignment no-op (``col = col``) on one key
-            # column: existing rows keep their stored values no matter which
-            # unique index the conflict landed on. Mirrors the CDK's ADBC
-            # merge path, which degrades to insert-if-not-exists when no
-            # update columns remain. Indexed access, not getattr —
-            # ColumnCollection attribute lookup resolves collection methods
-            # (``keys``, ``values``, ...) before columns.
-            key = conflict_keys[0]
-            return stmt.on_duplicate_key_update(**{key: table.columns[key]})
-        return stmt.on_duplicate_key_update(**update_cols)
+        stage: TableAddress,
+        target: TableAddress,
+        conflict_keys: Sequence[str],
+        columns: Sequence[str],
+    ) -> str:
+        """Render MySQL's declared merge form: ``INSERT ... ON DUPLICATE KEY``.
 
-    # ---- structural overrides (the portable form is invalid on MySQL) ------
+        The ``insert_on_duplicate_key`` form names no match keys in the
+        statement — MySQL reads them from whichever unique index the conflict
+        lands on — so ``conflict_keys`` only selects which landed columns are
+        updated (``columns`` minus the keys). Columns the target has but the
+        batch did not land keep their stored value on matched rows and their
+        DEFAULT on inserted ones.
+        """
+        column_list = ", ".join(self.quote_ident(c) for c in columns)
+        update_columns = [c for c in columns if c not in set(conflict_keys)]
+        statement = (
+            f"INSERT INTO {self.quote_table(target)} ({column_list}) "  # nosec B608
+            f"SELECT {column_list} FROM {self.quote_table(stage)} "
+        )
+        if not update_columns:
+            # Every landed column is a conflict key (e.g. a junction table):
+            # there is nothing to update. MySQL rejects an empty ON DUPLICATE
+            # KEY UPDATE clause, so render the documented self-assignment
+            # no-op (``col = col``) on one key column — matched rows keep
+            # their stored values, never an error. This is MySQL's
+            # insert-only degradation, equivalent to Postgres
+            # ``ON CONFLICT DO NOTHING``.
+            key = self.quote_ident(conflict_keys[0])
+            return statement + f"ON DUPLICATE KEY UPDATE {key} = {key}"
+        # ``VALUES(col)`` — the value that would have been inserted — is the
+        # portable reference for the incoming row across MySQL 5.7/8.0 and
+        # MariaDB (which ships its own copy of this dialect and does not
+        # support the 8.0.19 ``AS alias`` row-alias form). VALUES() is
+        # deprecated (warning only) on MySQL 8.0.20+, not removed.
+        assignments = ", ".join(
+            f"{self.quote_ident(c)} = VALUES({self.quote_ident(c)})"
+            for c in update_columns
+        )
+        return statement + f"ON DUPLICATE KEY UPDATE {assignments}"
+
+    # ---- structural override (the portable form is invalid on MySQL) -------
     def current_timestamp_default(self) -> str:
         # MySQL requires the fractional-seconds precision (fsp) of a DEFAULT
         # expression to match the column's fsp exactly; a mismatch is error
@@ -76,12 +101,6 @@ class MySQLDialect(SqlDialect):
         # canonicals as DATETIME(6) (definition/type-map-write.json), so the
         # default must be CURRENT_TIMESTAMP(6).
         return "CURRENT_TIMESTAMP(6)"
-
-    def batch_commits_key_type(self, type_mapper) -> str:
-        # TEXT (the write map's Utf8 render) cannot be a MySQL primary key
-        # without a prefix length; the engine's idempotency keys are bounded
-        # identifiers, so a bounded VARCHAR is correct.
-        return "VARCHAR(255)"
 
     # ---- session -----------------------------------------------------------
     def session_init_sql(self) -> list[str]:
@@ -179,10 +198,13 @@ class MySQLDialect(SqlDialect):
 class MySQLConnector(GenericSQLConnector):
     """MySQL connector: the CDK SQL base wired to the MySQL dialect.
 
-    Writes ride the generic batched-INSERT path. MySQL's native bulk-load
-    protocol (``LOAD DATA LOCAL INFILE``) requires ``local_infile`` to be
-    enabled on BOTH server and client — it is disabled by default on MySQL
-    8.0 servers — so the batched path is the portable default.
+    Writes ride the shared stage-then-merge primitive: rows land into a
+    session temp stage via executemany, then one
+    ``INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`` mode statement applies
+    them. MySQL's native ``LOAD DATA LOCAL INFILE`` bulk path is not wired —
+    it needs ``local_infile`` enabled on BOTH server and client (disabled by
+    default on MySQL 8.0 servers) — so the connector declares no
+    ``sql_capabilities.bulk_load`` mechanism and lands via executemany.
     """
 
     dialect_class = MySQLDialect

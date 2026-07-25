@@ -1,14 +1,21 @@
-"""Unit tests for MySQLDialect: verify_tls_state (post-connect TLS probe)
-and session_init_sql (session time_zone pinning).
+"""Unit tests for MySQLDialect.
 
-The hook receives a raw DBAPI connection (for async drivers, SQLAlchemy's
+Covers the stage-then-merge write-path renderers (stage_table_sql,
+merge_statement_sql — including the conformance-required all-keys no-op
+degradation), verify_tls_state (post-connect TLS probe), and
+session_init_sql (session time_zone pinning).
+
+The TLS hook receives a raw DBAPI connection (for async drivers, SQLAlchemy's
 asyncio adapter exposing the same cursor surface) and must raise
 TlsVerificationError when a TLS-promising mode finds an unencrypted session.
 """
 
+import re
+
 import pytest
 from unittest.mock import MagicMock
 
+from cdk.sql.dialects import TableAddress  # stubbed in conftest
 from cdk.sql.exceptions import TlsVerificationError  # stubbed in conftest
 from connector import MySQLDialect
 
@@ -117,3 +124,86 @@ class TestSessionInitSql:
     def test_is_deterministic(self):
         dialect = MySQLDialect()
         assert dialect.session_init_sql() == dialect.session_init_sql()
+
+
+class TestStageTableSql:
+    def setup_method(self):
+        self.dialect = MySQLDialect()
+        self.stage = TableAddress(table="_stage_orders", schema="shop")
+        self.target = TableAddress(table="orders", schema="shop")
+
+    def test_temp_stage_renders_create_temporary_table_like(self):
+        sql = self.dialect.stage_table_sql(self.stage, self.target, temp=True)
+        assert sql == (
+            "CREATE TEMPORARY TABLE `shop`.`_stage_orders` LIKE `shop`.`orders`"
+        )
+
+    def test_non_temp_stage_omits_temporary_keyword(self):
+        sql = self.dialect.stage_table_sql(self.stage, self.target, temp=False)
+        assert sql.startswith("CREATE TABLE ")
+        assert "TEMPORARY" not in sql
+
+    def test_uses_unparenthesized_like(self):
+        # MySQL copies the table shape with bare `LIKE target`, never the
+        # Postgres `(LIKE ... INCLUDING ...)` parenthesized form.
+        sql = self.dialect.stage_table_sql(self.stage, self.target, temp=True)
+        assert " LIKE `shop`.`orders`" in sql
+        assert "(LIKE" not in sql
+
+
+class TestMergeStatementSql:
+    def setup_method(self):
+        self.dialect = MySQLDialect()
+        self.stage = TableAddress(table="_stage_orders", schema="shop")
+        self.target = TableAddress(table="orders", schema="shop")
+
+    def test_renders_insert_select_on_duplicate_key_update(self):
+        sql = self.dialect.merge_statement_sql(
+            self.stage, self.target,
+            conflict_keys=["id"], columns=["id", "total", "status"],
+        )
+        assert sql == (
+            "INSERT INTO `shop`.`orders` (`id`, `total`, `status`) "
+            "SELECT `id`, `total`, `status` FROM `shop`.`_stage_orders` "
+            "ON DUPLICATE KEY UPDATE `total` = VALUES(`total`), "
+            "`status` = VALUES(`status`)"
+        )
+
+    def test_update_set_excludes_conflict_keys(self):
+        sql = self.dialect.merge_statement_sql(
+            self.stage, self.target,
+            conflict_keys=["id"], columns=["id", "total"],
+        )
+        # `id` is a conflict key → never appears in the UPDATE clause.
+        update_clause = sql.split("ON DUPLICATE KEY UPDATE", 1)[1]
+        assert "`id` =" not in update_clause
+        assert "`total` = VALUES(`total`)" in update_clause
+
+    def test_all_key_columns_degrades_to_self_assignment_noop(self):
+        # Conformance-required: when every landed column is a conflict key,
+        # an empty ON DUPLICATE KEY UPDATE clause is invalid SQL. The
+        # renderer must emit a self-assignment no-op instead.
+        sql = self.dialect.merge_statement_sql(
+            self.stage, self.target,
+            conflict_keys=["id"], columns=["id"],
+        )
+        assert not sql.rstrip().endswith("ON DUPLICATE KEY UPDATE")
+        assert sql.endswith("ON DUPLICATE KEY UPDATE `id` = `id`")
+
+    def test_composite_all_key_columns_self_assigns_one_key(self):
+        sql = self.dialect.merge_statement_sql(
+            self.stage, self.target,
+            conflict_keys=["a", "b"], columns=["a", "b"],
+        )
+        assert sql.endswith("ON DUPLICATE KEY UPDATE `a` = `a`")
+
+    def test_no_foreign_merge_tokens_leak_into_sql(self):
+        # test_merge_statement_matches_declared_form asserts the rendered SQL
+        # carries ON DUPLICATE KEY UPDATE and never MERGE or ON CONFLICT.
+        for cols, keys in ([["id", "v"], ["id"]], [["id"], ["id"]]):
+            sql = self.dialect.merge_statement_sql(
+                self.stage, self.target, conflict_keys=keys, columns=cols,
+            )
+            assert re.search(r"\bON\s+DUPLICATE\s+KEY\s+UPDATE\b", sql, re.I)
+            assert not re.search(r"\bMERGE\b", sql, re.I)
+            assert not re.search(r"\bON\s+CONFLICT\b", sql, re.I)
