@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.1] - 2026-07-25
+
+### Fixed
+- feat: migrate to rc17 contracts + SQL write path v2 engine (#35)
+
 ## [0.3.0] - 2026-07-23
 
 ### Added
