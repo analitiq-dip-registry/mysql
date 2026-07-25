@@ -20,16 +20,41 @@ Two jobs, both required before any test module imports:
 
 import importlib.util
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
 
 # ---- 1. engine-private stubs (before the package import below) ----------
 
 
+@dataclass(frozen=True)
+class TableAddress:
+    """Mirror of cdk.sql.dialects.TableAddress (table, schema, catalog)."""
+
+    table: str
+    schema: str = ""
+    catalog: str = ""
+
+
 class _SqlDialect:
-    """Minimal base so MySQLDialect inherits correctly in test isolation."""
+    """Minimal base so MySQLDialect inherits correctly in test isolation.
+
+    Provides the identifier-quoting surface the write-path renderers call
+    (``quote_ident`` / ``quote_table``), mirroring the real CDK base's
+    backtick behavior so the render tests exercise real composition logic.
+    """
 
     name: str = ""
+    quote_char: str = '"'
+
+    def quote_ident(self, name: str) -> str:
+        return f"{self.quote_char}{name}{self.quote_char}"
+
+    def quote_table(self, address: TableAddress) -> str:
+        parts = [address.table]
+        if address.schema:
+            parts.insert(0, address.schema)
+        return ".".join(self.quote_ident(p) for p in parts)
 
 
 class _GenericSQLConnector:
@@ -45,6 +70,7 @@ _transport_factory.ca_ssl_context = MagicMock()
 
 _cdk_sql_dialects = MagicMock()
 _cdk_sql_dialects.SqlDialect = _SqlDialect
+_cdk_sql_dialects.TableAddress = TableAddress
 
 _cdk_sql_exceptions = MagicMock()
 _cdk_sql_exceptions.TlsVerificationError = TlsVerificationError
