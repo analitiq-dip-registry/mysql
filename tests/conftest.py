@@ -56,6 +56,9 @@ class _SqlDialect:
             parts.insert(0, address.schema)
         return ".".join(self.quote_ident(p) for p in parts)
 
+    def empty_table_sql(self, table: TableAddress) -> str:
+        return f"TRUNCATE TABLE {self.quote_table(table)}"
+
 
 class _GenericSQLConnector:
     pass

@@ -155,6 +155,42 @@ class TestStageTableSql:
         assert "(LIKE" not in sql
 
 
+class TestEmptyTableSql:
+    """Confirm the conftest stub mirrors CDK base behavior for empty_table_sql.
+
+    MySQLDialect does not override empty_table_sql — the CDK base class
+    renders TRUNCATE TABLE via the dialect's own quote_table method. The
+    conftest stub mirrors that implementation so the rendering tests below
+    verify the stub produces correct MySQL SQL. test_no_override_needed is
+    the load-bearing assertion: it proves MySQLDialect inherits the hook
+    rather than shadowing it, so the real CDK base runs in production.
+    """
+
+    def setup_method(self):
+        self.dialect = MySQLDialect()
+        self.table = TableAddress(table="orders", schema="shop")
+
+    def test_renders_truncate_table(self):
+        sql = self.dialect.empty_table_sql(self.table)
+        assert sql == "TRUNCATE TABLE `shop`.`orders`"
+
+    def test_reserved_word_table_name_is_quoted(self):
+        # MySQL reserved words (e.g. 'order') require backtick quoting to be
+        # valid SQL; this pins the quoting contract for the inherited method.
+        table = TableAddress(table="order", schema="shop")
+        sql = self.dialect.empty_table_sql(table)
+        assert sql == "TRUNCATE TABLE `shop`.`order`"
+
+    def test_unqualified_table(self):
+        table = TableAddress(table="orders")
+        sql = self.dialect.empty_table_sql(table)
+        assert sql == "TRUNCATE TABLE `orders`"
+
+    def test_no_override_needed(self):
+        # MySQLDialect must not shadow empty_table_sql; the CDK base handles it.
+        assert "empty_table_sql" not in MySQLDialect.__dict__
+
+
 class TestMergeStatementSql:
     def setup_method(self):
         self.dialect = MySQLDialect()

@@ -203,8 +203,12 @@ class MySQLConnector(GenericSQLConnector):
     ``INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`` mode statement applies
     them. MySQL's native ``LOAD DATA LOCAL INFILE`` bulk path is not wired —
     it needs ``local_infile`` enabled on BOTH server and client (disabled by
-    default on MySQL 8.0 servers) — so the connector declares no
-    ``sql_capabilities.bulk_load`` mechanism and lands via executemany.
+    default on MySQL 8.0 servers) — so ``bulk_load`` is declared as ``{}``
+    (no MySQL-specific mechanism) and batch landing uses the CDK's default
+    executemany-based path. ``empty_table_sql`` is likewise not overridden:
+    the CDK base-class default (``TRUNCATE TABLE`` rendered via the dialect's
+    own quoting) produces correctly backtick-quoted MySQL SQL without a
+    connector-level override.
     """
 
     dialect_class = MySQLDialect
