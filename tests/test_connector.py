@@ -216,10 +216,12 @@ class TestMergeStatementSql:
 class TestTypeMapWrite:
     """Structural validation of definition/type-map-write.json.
 
-    The rc17 contract does not permit 'Object' or 'List' as write-map
-    canonicals — those identifiers are only valid as read-map narrowings of
-    a Json canonical.  Rules carrying them are dead (the engine rejects them
-    before evaluation) and must not appear in the write map.
+    The rc17 contract does not permit 'Object', 'List'/'LargeList', or
+    'Struct<T>' as write-map canonicals — those identifiers are only valid as
+    read-map narrowings of a Json canonical.  Rules carrying them are dead (the
+    engine rejects them before evaluation) and must not appear in the write map.
+    A companion assertion verifies that exactly one valid 'Json → JSON' rule is
+    retained, guarding against accidentally removing it alongside the dead ones.
     """
 
     def setup_method(self):
@@ -229,16 +231,27 @@ class TestTypeMapWrite:
     def _canonicals(self):
         return [r["canonical"] for r in self._rules]
 
-    def test_no_bare_object_canonical(self):
+    def _stripped(self, canonical):
+        # Strip regex escape sequences (e.g. \( \) \s) before substring checks
+        # so metacharacter escapes are not confused with type-name occurrences.
+        return re.sub(r"\\.", "", canonical)
+
+    def test_no_object_canonical(self):
         for canonical in self._canonicals():
-            assert "Object" not in re.sub(r"\\..", "", canonical), (
+            assert "Object" not in self._stripped(canonical), (
                 f"Write map must not carry an 'Object' canonical: {canonical!r}"
             )
 
     def test_no_list_canonical(self):
         for canonical in self._canonicals():
-            assert not re.search(r"(?<![A-Za-z])List", re.sub(r"\\..", "", canonical)), (
+            assert "List" not in self._stripped(canonical), (
                 f"Write map must not carry a 'List' canonical: {canonical!r}"
+            )
+
+    def test_no_struct_canonical(self):
+        for canonical in self._canonicals():
+            assert "Struct" not in self._stripped(canonical), (
+                f"Write map must not carry a 'Struct' canonical: {canonical!r}"
             )
 
     def test_json_canonical_maps_to_json_native(self):
