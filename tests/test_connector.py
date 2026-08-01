@@ -10,7 +10,9 @@ asyncio adapter exposing the same cursor surface) and must raise
 TlsVerificationError when a TLS-promising mode finds an unencrypted session.
 """
 
+import json
 import re
+from pathlib import Path
 
 import pytest
 from unittest.mock import MagicMock
@@ -18,6 +20,8 @@ from unittest.mock import MagicMock
 from cdk.sql.dialects import TableAddress  # stubbed in conftest
 from cdk.sql.exceptions import TlsVerificationError  # stubbed in conftest
 from connector import MySQLDialect
+
+_DEFINITION_DIR = Path(__file__).resolve().parent.parent / "definition"
 
 
 def _make_dbapi_connection(cipher) -> MagicMock:
@@ -207,3 +211,50 @@ class TestMergeStatementSql:
             assert re.search(r"\bON\s+DUPLICATE\s+KEY\s+UPDATE\b", sql, re.I)
             assert not re.search(r"\bMERGE\b", sql, re.I)
             assert not re.search(r"\bON\s+CONFLICT\b", sql, re.I)
+
+
+class TestTypeMapWrite:
+    """Structural validation of definition/type-map-write.json.
+
+    The rc17 contract does not permit 'Object', 'List'/'LargeList', or
+    'Struct<T>' as write-map canonicals — those identifiers are only valid as
+    read-map narrowings of a Json canonical.  Rules carrying them are dead (the
+    engine rejects them before evaluation) and must not appear in the write map.
+    A companion assertion verifies that exactly one valid 'Json → JSON' rule is
+    retained, guarding against accidentally removing it alongside the dead ones.
+    """
+
+    def setup_method(self):
+        with open(_DEFINITION_DIR / "type-map-write.json") as f:
+            self._rules = json.load(f)
+
+    def _canonicals(self):
+        return [r["canonical"] for r in self._rules]
+
+    def _stripped(self, canonical):
+        # Strip regex escape sequences (e.g. \( \) \s) before substring checks
+        # so metacharacter escapes are not confused with type-name occurrences.
+        return re.sub(r"\\.", "", canonical)
+
+    def test_no_object_canonical(self):
+        for canonical in self._canonicals():
+            assert "Object" not in self._stripped(canonical), (
+                f"Write map must not carry an 'Object' canonical: {canonical!r}"
+            )
+
+    def test_no_list_canonical(self):
+        for canonical in self._canonicals():
+            assert "List" not in self._stripped(canonical), (
+                f"Write map must not carry a 'List' canonical: {canonical!r}"
+            )
+
+    def test_no_struct_canonical(self):
+        for canonical in self._canonicals():
+            assert "Struct" not in self._stripped(canonical), (
+                f"Write map must not carry a 'Struct' canonical: {canonical!r}"
+            )
+
+    def test_json_canonical_maps_to_json_native(self):
+        json_rules = [r for r in self._rules if r.get("canonical") == "Json"]
+        assert len(json_rules) == 1, "Expected exactly one Json → JSON rule"
+        assert json_rules[0]["native"] == "JSON"

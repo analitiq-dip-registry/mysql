@@ -24,7 +24,5 @@
   { "match": "regex", "canonical": "^Duration\\([A-Z]+\\)$", "native": "TIME(6)" },
   { "match": "regex", "canonical": "^Time(?:32|64)\\([A-Z]+\\)$", "native": "TIME(6)" },
   { "match": "regex", "canonical": "^Timestamp\\([A-Z]+\\)$", "native": "DATETIME(6)" },
-  { "match": "regex", "canonical": "^Timestamp\\([A-Z]+,\\s*.+\\)$", "native": "DATETIME(6)" },
-  { "match": "regex", "canonical": "^(?:Large)?List(?:<.+>)?$", "native": "JSON" },
-  { "match": "regex", "canonical": "^(?:Struct<.+>|Object)$", "native": "JSON" }
+  { "match": "regex", "canonical": "^Timestamp\\([A-Z]+,\\s*.+\\)$", "native": "DATETIME(6)" }
 ]
