@@ -151,6 +151,40 @@ class TestStageTableSql:
         assert "(LIKE" not in sql
 
 
+class TestEmptyTableSql:
+    """Confirm the CDK base-class default for empty_table_sql works for MySQL.
+
+    MySQLDialect does not override empty_table_sql — the base class renders
+    TRUNCATE TABLE via the dialect's own quote_table method.  Because
+    MySQLDialect sets quote_char='`', the inherited implementation produces
+    correctly backtick-quoted MySQL SQL without any connector-level override.
+    """
+
+    def setup_method(self):
+        self.dialect = MySQLDialect()
+        self.table = TableAddress(table="orders", schema="shop")
+
+    def test_renders_truncate_table(self):
+        sql = self.dialect.empty_table_sql(self.table)
+        assert sql == "TRUNCATE TABLE `shop`.`orders`"
+
+    def test_uses_backtick_quoting(self):
+        sql = self.dialect.empty_table_sql(self.table)
+        assert "`shop`" in sql
+        assert "`orders`" in sql
+        assert '"' not in sql
+
+    def test_unqualified_table(self):
+        table = TableAddress(table="orders")
+        sql = self.dialect.empty_table_sql(table)
+        assert sql == "TRUNCATE TABLE `orders`"
+
+    def test_no_override_needed(self):
+        # The inherited base-class implementation is sufficient; MySQLDialect
+        # must not shadow it with a custom override.
+        assert "empty_table_sql" not in MySQLDialect.__dict__
+
+
 class TestMergeStatementSql:
     def setup_method(self):
         self.dialect = MySQLDialect()
