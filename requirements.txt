@@ -1,6 +1,16 @@
-# THIS connector's driver only (the engine pins no database drivers).
+# This connector's driver only. The engine image ships no database drivers
+# and provides the CDK itself, which is never listed here.
+
+# Async MySQL DBAPI behind the SQLAlchemy `mysql+aiomysql` transport.
+# Pulls in PyMySQL, which aiomysql builds on.
 aiomysql>=0.2.0
+
 # aiomysql's adapter still passes the deprecated positional argument to
 # PyMySQL Connection.ping(); PyMySQL 1.2 removed it. Pin below 1.2 until
 # aiomysql ships a fix.
 pymysql<1.2
+
+# MySQL 8.0+ defaults to the caching_sha2_password auth plugin, whose full
+# authentication does an RSA key exchange; PyMySQL implements that through
+# `cryptography` and refuses the handshake without it.
+cryptography>=42.0

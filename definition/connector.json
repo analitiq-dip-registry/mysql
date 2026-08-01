@@ -3,8 +3,8 @@
   "kind": "database",
   "connector_id": "mysql",
   "display_name": "MySQL",
-  "description": "MySQL open-source relational database. Connects over the MySQL wire protocol via the async SQLAlchemy mysql+aiomysql dialect for structured data storage, querying, runtime table discovery, and DDL/write-back.",
-  "documentation_url": "https://dev.mysql.com/doc/refman/8.0/en/",
+  "description": "MySQL relational database (8.4 LTS). Reads and writes over the async SQLAlchemy mysql+aiomysql transport: username/password authentication, MySQL's own --ssl-mode TLS vocabulary (DISABLED through VERIFY_IDENTITY) with a post-connect Ssl_cipher enforcement probe, schema/table/view discovery via information_schema, and declared SQL write-path capabilities (stage-then-merge with CREATE TEMPORARY TABLE ... LIKE and INSERT ... ON DUPLICATE KEY UPDATE). The session is pinned to SET time_zone = '+00:00' so TIMESTAMP values carry a well-defined UTC instant. No first-class ADBC driver and no Arrow Flight SQL endpoint exist for MySQL, so the SQLAlchemy transport is the only supported path; batches land via executemany (LOAD DATA LOCAL INFILE is not reachable through the engine's connect-argument surface - see the connector README).",
+  "documentation_url": "https://dev.mysql.com/doc/refman/8.4/en/",
   "tags": [
     "database",
     "mysql",
@@ -75,12 +75,11 @@
         "storage": "connection.parameters",
         "type": "string",
         "required": true,
-        "default": "127.0.0.1",
         "ui": {
           "label": "Host",
           "widget": "text",
-          "placeholder": "e.g. 127.0.0.1 or db.example.com",
-          "help_text": "Use an IP or DNS name reachable over TCP/IP. Prefer 127.0.0.1 over 'localhost' to avoid DNS/IPv6 resolution ambiguity."
+          "placeholder": "e.g. db.example.com or 127.0.0.1",
+          "help_text": "Hostname or IP address of the MySQL server. On Unix, the literal 'localhost' makes the client use a Unix socket file instead of TCP; use 127.0.0.1 for a TCP connection."
         }
       },
       "port": {
@@ -92,7 +91,8 @@
         "default": 3306,
         "ui": {
           "label": "Port",
-          "widget": "text"
+          "widget": "number",
+          "help_text": "TCP port the server listens on; MySQL's documented default is 3306."
         }
       },
       "database": {
@@ -104,7 +104,8 @@
         "ui": {
           "label": "Database",
           "widget": "text",
-          "placeholder": "e.g. my_database"
+          "placeholder": "e.g. my_database",
+          "help_text": "MySQL uses 'database' and 'schema' interchangeably - there is no catalog level above it."
         }
       },
       "username": {
@@ -116,7 +117,7 @@
         "ui": {
           "label": "Username",
           "widget": "text",
-          "placeholder": "e.g. root"
+          "placeholder": "e.g. analitiq"
         }
       },
       "password": {
@@ -148,27 +149,27 @@
         "ui": {
           "label": "SSL Mode",
           "widget": "select",
-          "help_text": "MySQL-native TLS mode vocabulary (--ssl-mode). REQUIRED, VERIFY_CA, and VERIFY_IDENTITY are enforced post-connect: every new connection is verified to be encrypted and fails if it is not. DISABLED and PREFERRED do not promise encryption.",
+          "help_text": "MySQL's own --ssl-mode vocabulary. PREFERRED (MySQL's documented default) encrypts when the server supports it and silently falls back to plaintext; REQUIRED and above forbid that fallback and are enforced post-connect via SHOW STATUS LIKE 'Ssl_cipher'. Per MySQL semantics REQUIRED does not verify the server certificate - use VERIFY_CA or VERIFY_IDENTITY, which require a PEM CA bundle.",
           "options": [
             {
-              "label": "DISABLED — no TLS (plaintext only)",
-              "value": "DISABLED"
+              "value": "DISABLED",
+              "label": "Disabled - unencrypted connection"
             },
             {
-              "label": "PREFERRED — try TLS, fall back to plaintext (default)",
-              "value": "PREFERRED"
+              "value": "PREFERRED",
+              "label": "Preferred - encrypt if the server supports it (default)"
             },
             {
-              "label": "REQUIRED — require TLS (verified post-connect), no certificate verification",
-              "value": "REQUIRED"
+              "value": "REQUIRED",
+              "label": "Required - encrypt or fail; no certificate verification"
             },
             {
-              "label": "VERIFY_CA — require TLS, verify server CA",
-              "value": "VERIFY_CA"
+              "value": "VERIFY_CA",
+              "label": "Verify CA - encrypt and verify the server certificate against the CA"
             },
             {
-              "label": "VERIFY_IDENTITY — require TLS, verify server CA and hostname",
-              "value": "VERIFY_IDENTITY"
+              "value": "VERIFY_IDENTITY",
+              "label": "Verify Identity - also verify the server host name"
             }
           ]
         }
@@ -183,10 +184,17 @@
         "ui": {
           "label": "SSL CA Certificate",
           "widget": "textarea",
-          "help_text": "PEM-encoded CA certificate used to verify the MySQL server's TLS certificate. Required when ssl_mode is VERIFY_CA or VERIFY_IDENTITY; ignored otherwise."
+          "help_text": "PEM-encoded CA certificate (MySQL's --ssl-ca). Required when SSL Mode is VERIFY_CA or VERIFY_IDENTITY; ignored for the other modes."
         }
       }
     },
+    "required_for_activation": [
+      "connection.parameters.host",
+      "connection.parameters.port",
+      "connection.parameters.database",
+      "connection.parameters.username",
+      "secrets.password"
+    ],
     "validation": {
       "rules": [
         {
@@ -205,21 +213,6 @@
       ]
     }
   },
-  "resource_discovery": {
-    "strategy": "information_schema",
-    "transport_ref": "database",
-    "implementation": {
-      "type": "builtin"
-    },
-    "produces": [
-      "connection.endpoints",
-      "connection.type_map"
-    ],
-    "triggers": {
-      "list_resources": "on_activation",
-      "describe_resource": "on_resource_selected"
-    }
-  },
   "sql_capabilities": {
     "catalog": "none",
     "session_targeting": "per_statement",
@@ -229,6 +222,37 @@
       "scope": "temp",
       "schema": "target",
       "transactional_ddl": false
+    },
+    "limits": {
+      "max_bind_params": 65535,
+      "max_identifier_len": 64
+    }
+  },
+  "write_unit": {
+    "rows": 5000,
+    "bytes": 4194304
+  },
+  "resource_discovery": {
+    "strategy": "information_schema",
+    "transport_ref": "database",
+    "implementation": {
+      "type": "builtin"
+    },
+    "options": {
+      "exclude_schemas": [
+        "information_schema",
+        "mysql",
+        "performance_schema",
+        "sys"
+      ]
+    },
+    "produces": [
+      "connection.endpoints",
+      "connection.type_map"
+    ],
+    "triggers": {
+      "list_resources": "on_activation",
+      "describe_resource": "on_resource_selected"
     }
   }
 }
