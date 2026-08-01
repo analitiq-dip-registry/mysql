@@ -152,12 +152,14 @@ class TestStageTableSql:
 
 
 class TestEmptyTableSql:
-    """Confirm the CDK base-class default for empty_table_sql works for MySQL.
+    """Confirm the conftest stub mirrors CDK base behavior for empty_table_sql.
 
-    MySQLDialect does not override empty_table_sql — the base class renders
-    TRUNCATE TABLE via the dialect's own quote_table method.  Because
-    MySQLDialect sets quote_char='`', the inherited implementation produces
-    correctly backtick-quoted MySQL SQL without any connector-level override.
+    MySQLDialect does not override empty_table_sql — the CDK base class
+    renders TRUNCATE TABLE via the dialect's own quote_table method. The
+    conftest stub mirrors that implementation so the rendering tests below
+    verify the stub produces correct MySQL SQL. test_no_override_needed is
+    the load-bearing assertion: it proves MySQLDialect inherits the hook
+    rather than shadowing it, so the real CDK base runs in production.
     """
 
     def setup_method(self):
@@ -168,11 +170,12 @@ class TestEmptyTableSql:
         sql = self.dialect.empty_table_sql(self.table)
         assert sql == "TRUNCATE TABLE `shop`.`orders`"
 
-    def test_uses_backtick_quoting(self):
-        sql = self.dialect.empty_table_sql(self.table)
-        assert "`shop`" in sql
-        assert "`orders`" in sql
-        assert '"' not in sql
+    def test_reserved_word_table_name_is_quoted(self):
+        # MySQL reserved words (e.g. 'order') require backtick quoting to be
+        # valid SQL; this pins the quoting contract for the inherited method.
+        table = TableAddress(table="order", schema="shop")
+        sql = self.dialect.empty_table_sql(table)
+        assert sql == "TRUNCATE TABLE `shop`.`order`"
 
     def test_unqualified_table(self):
         table = TableAddress(table="orders")
@@ -180,8 +183,7 @@ class TestEmptyTableSql:
         assert sql == "TRUNCATE TABLE `orders`"
 
     def test_no_override_needed(self):
-        # The inherited base-class implementation is sufficient; MySQLDialect
-        # must not shadow it with a custom override.
+        # MySQLDialect must not shadow empty_table_sql; the CDK base handles it.
         assert "empty_table_sql" not in MySQLDialect.__dict__
 
 

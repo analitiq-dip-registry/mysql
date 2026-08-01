@@ -205,10 +205,10 @@ class MySQLConnector(GenericSQLConnector):
     it needs ``local_infile`` enabled on BOTH server and client (disabled by
     default on MySQL 8.0 servers) — so ``bulk_load`` is declared as ``{}``
     (no MySQL-specific mechanism) and batch landing uses the CDK's default
-    executemany-based path. ``empty_table_sql`` and ``bulk_land`` are
-    likewise not overridden: the CDK base-class defaults (``TRUNCATE TABLE``
-    rendered via the dialect's own quoting, and the executemany landing path)
-    are correct for MySQL without modification.
+    executemany-based path. ``empty_table_sql`` is likewise not overridden:
+    the CDK base-class default (``TRUNCATE TABLE`` rendered via the dialect's
+    own quoting) produces correctly backtick-quoted MySQL SQL without a
+    connector-level override.
     """
 
     dialect_class = MySQLDialect
