@@ -43,10 +43,16 @@ class TestVerifyTlsState:
         self.dialect.verify_tls_state(conn, mode)
         conn.cursor.assert_not_called()
 
-    def test_no_op_for_unknown_mode(self):
-        """Unrecognized modes are a no-op; mode validation is the caller's job."""
+    def test_unrecognized_mode_raises_rather_than_skipping_the_probe(self):
+        """An unknown mode fails closed — it is never treated as "nothing to check".
+
+        Skipping the probe for an unrecognized mode is how a strict mode
+        gets silently downgraded to cleartext: build_tls_connect_arg would
+        reject the string while this hook waved it through.
+        """
         conn = MagicMock()
-        self.dialect.verify_tls_state(conn, "BOGUS_MODE")
+        with pytest.raises(TlsVerificationError, match="unrecognized ssl_mode"):
+            self.dialect.verify_tls_state(conn, "BOGUS_MODE")
         conn.cursor.assert_not_called()
 
     # ------------------------------------------------------------------
@@ -59,9 +65,23 @@ class TestVerifyTlsState:
         self.dialect.verify_tls_state(conn, mode)  # should not raise
 
     @pytest.mark.parametrize("mode", ["required", "verify_ca", "verify_identity"])
-    def test_case_insensitive_strict_modes(self, mode):
+    def test_case_insensitive_strict_modes_still_probe(self, mode):
+        """A lowercase strict mode is the declared mode — and is enforced.
+
+        Asserting only "does not raise" cannot tell a passed probe from a
+        skipped one, which is exactly how a fail-open bypass hides.
+        """
         conn = _make_dbapi_connection("TLS_AES_256_GCM_SHA384")
         self.dialect.verify_tls_state(conn, mode)  # should not raise
+        conn.cursor.return_value.execute.assert_called_once_with(
+            "SHOW STATUS LIKE 'Ssl_cipher'"
+        )
+
+    @pytest.mark.parametrize("mode", ["required", "verify_ca", "verify_identity"])
+    def test_lowercase_strict_mode_raises_when_not_encrypted(self, mode):
+        conn = _make_dbapi_connection("")
+        with pytest.raises(TlsVerificationError):
+            self.dialect.verify_tls_state(conn, mode)
 
     # ------------------------------------------------------------------
     # Strict modes with no cipher — must raise TlsVerificationError

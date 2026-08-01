@@ -62,6 +62,9 @@ MySQL uses standard database credentials (username and password) to authenticate
 - **Character set** -- The default character set is `utf8mb4`.
 - **TIME maps to Duration, not time-of-day** -- MySQL `TIME` is a signed duration (`-838:59:59` to `+838:59:59`), not a clock time. Columns are read as `Duration` canonicals (unit follows the declared fsp: bare/`TIME(0)` = seconds, fsp 1-3 = milliseconds, fsp 4-6 = microseconds) so negative and >24 h values are represented losslessly.
 - **TIMESTAMP sessions are pinned to UTC** -- MySQL stores `TIMESTAMP` as UTC but returns values converted through the session `time_zone`. The connector pins every new connection to UTC (`SET time_zone = '+00:00'`), so retrieved instants are correct regardless of the server's global setting. `DATETIME` stored values are zoneless and unaffected, but `CURRENT_TIMESTAMP`/`NOW()` defaults evaluated on connector connections now generate UTC wall-clock values (consistent with the canonicals).
+- **Written text columns are capped at 255 characters** -- On the write path the `Utf8` canonical renders `VARCHAR(255)`. MySQL rejects `TEXT`/`BLOB` columns in a key without a prefix length, and the engine declares its keyless-stream dedup column as a `Utf8` primary key, so one rendering has to serve both roles. Values longer than 255 characters fail loudly (error 1406 under the default `STRICT_TRANS_TABLES`), and a table with more than roughly 64 string columns can exceed MySQL's 65,535-byte row limit (error 1118). `LargeUtf8` renders `LONGTEXT` and is the escape hatch for genuinely long text.
+- **Bulk load is not used** -- MySQL's native `LOAD DATA LOCAL INFILE` requires the client connection to be opened with `local_infile=True`, which aiomysql defaults to off and the engine's SQLAlchemy transport exposes no channel to set. Batches land via `executemany` instead.
+- **System schemas are hidden from discovery** -- `information_schema`, `mysql`, `performance_schema` and `sys` are excluded from resource discovery.
 - **No rate limits** -- This is a direct database connection; no API rate limits apply. However, heavy queries may impact database performance.
 
 ## SSL mode
@@ -104,6 +107,6 @@ All connectors in this registry are community-maintained and live at [github.com
 
 ## Links
 
-- [MySQL Documentation](https://dev.mysql.com/doc/refman/8.0/en/)
+- [MySQL Documentation](https://dev.mysql.com/doc/refman/8.4/en/)
 - [Analitiq Cloud](https://analitiq-app.com)
 - [Analitiq Engine (open source)](https://github.com/analitiq-ai/analitiq-engine)
