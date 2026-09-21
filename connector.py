@@ -9,7 +9,7 @@ default. MySQL runs on the async SQLAlchemy transport (``mysql+aiomysql``)
 — no first-class ADBC driver exists for MySQL.
 
 The write-direction type vocabulary is declarative-only: DDL column types
-render through ``definition/type-map-write.json`` via the base
+render through the ``write`` section of ``definition/type-map.json`` via the base
 ``render_column_type``. No Python type-rendering table ships here.
 
 Registered under connector_id ``mysql`` via the package entry points
@@ -98,7 +98,7 @@ class MySQLDialect(SqlDialect):
         # MySQL requires the fractional-seconds precision (fsp) of a DEFAULT
         # expression to match the column's fsp exactly; a mismatch is error
         # 1067 "Invalid default value". The write map renders Timestamp
-        # canonicals as DATETIME(6) (definition/type-map-write.json), so the
+        # canonicals as DATETIME(6) (``write`` section of definition/type-map.json), so the
         # default must be CURRENT_TIMESTAMP(6).
         return "CURRENT_TIMESTAMP(6)"
 

@@ -250,7 +250,7 @@ class TestMergeStatementSql:
 
 
 class TestTypeMapWrite:
-    """Structural validation of definition/type-map-write.json.
+    """Structural validation of the ``write`` section of definition/type-map.json.
 
     The rc17 contract does not permit 'Object', 'List'/'LargeList', or
     'Struct<T>' as write-map canonicals — those identifiers are only valid as
@@ -261,11 +261,11 @@ class TestTypeMapWrite:
     """
 
     def setup_method(self):
-        with open(_DEFINITION_DIR / "type-map-write.json") as f:
-            self._rules = json.load(f)
+        with open(_DEFINITION_DIR / "type-map.json") as f:
+            self._rules = json.load(f)["write"]
 
     def _canonicals(self):
-        return [r["canonical"] for r in self._rules]
+        return [r["arrow_type"] for r in self._rules]
 
     def _stripped(self, canonical):
         # Strip regex escape sequences (e.g. \( \) \s) before substring checks
@@ -291,6 +291,6 @@ class TestTypeMapWrite:
             )
 
     def test_json_canonical_maps_to_json_native(self):
-        json_rules = [r for r in self._rules if r.get("canonical") == "Json"]
+        json_rules = [r for r in self._rules if r["arrow_type"] == "Json"]
         assert len(json_rules) == 1, "Expected exactly one Json → JSON rule"
-        assert json_rules[0]["native"] == "JSON"
+        assert json_rules[0]["native_type"] == "JSON"
