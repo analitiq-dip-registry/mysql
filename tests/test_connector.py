@@ -294,3 +294,48 @@ class TestTypeMapWrite:
         json_rules = [r for r in self._rules if r["arrow_type"] == "Json"]
         assert len(json_rules) == 1, "Expected exactly one Json → JSON rule"
         assert json_rules[0]["native_type"] == "JSON"
+
+
+class TestTypeMapReadFixedSize:
+    """Pins the rc25-drift fix to the read map's CHAR(...) BYTE / BINARY(...) rules.
+
+    Both regexes were tightened from a bare ``\\d+`` size capture to
+    ``[1-9]\\d*`` (RULE-TMAP-010: the capture must stay within the Arrow
+    FixedSizeBinary parameter's valid range, which excludes 0 and any
+    leading-zero spelling). A revert to the old, unbounded capture would pass
+    every other test in this file silently.
+    """
+
+    def setup_method(self):
+        with open(_DEFINITION_DIR / "type-map.json") as f:
+            rules = json.load(f)["read"]
+        self._char_byte = next(
+            r for r in rules if r["native_type"] == r"^CHAR\((?<n>[1-9]\d*)\) BYTE$"
+        )
+        self._binary = next(
+            r for r in rules if r["native_type"] == r"^BINARY\((?<n>[1-9]\d*)\)$"
+        )
+
+    @staticmethod
+    def _pattern(rule):
+        return re.compile(rule["native_type"].replace("(?<n>", "(?P<n>"))
+
+    @pytest.mark.parametrize("size", ["0", "00", "007"])
+    def test_char_byte_rejects_zero_and_leading_zero_sizes(self, size):
+        assert self._pattern(self._char_byte).match(f"CHAR({size}) BYTE") is None
+
+    @pytest.mark.parametrize("size", ["1", "10", "255"])
+    def test_char_byte_accepts_valid_sizes(self, size):
+        match = self._pattern(self._char_byte).match(f"CHAR({size}) BYTE")
+        assert match is not None
+        assert match.group("n") == size
+
+    @pytest.mark.parametrize("size", ["0", "00", "007"])
+    def test_binary_rejects_zero_and_leading_zero_sizes(self, size):
+        assert self._pattern(self._binary).match(f"BINARY({size})") is None
+
+    @pytest.mark.parametrize("size", ["1", "16", "255"])
+    def test_binary_accepts_valid_sizes(self, size):
+        match = self._pattern(self._binary).match(f"BINARY({size})")
+        assert match is not None
+        assert match.group("n") == size
